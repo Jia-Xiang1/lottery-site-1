@@ -3,9 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import { resolve } from "node:path";
 import AutoImport from "unplugin-auto-import/vite";
 
-const repoName = "lottery-site-1";
-const isGithubPages = process.env.GITHUB_ACTIONS === "true";
-const base = isGithubPages ? `/${repoName}/` : "/";
+const base = "/lottery-site-1/";
 const isPreview = false;
 
 export default defineConfig({

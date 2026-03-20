@@ -1,54 +1,97 @@
-import { PRIZES } from '../../../mocks/prizes';
+import { useEffect, useState } from 'react';
+import { getAllPrizes, type PrizeItem } from '../../../utils/lotteryUtils';
 
 export default function PrizeTable() {
+  const [prizes, setPrizes] = useState<PrizeItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPrizes = async () => {
+      try {
+        const data = await getAllPrizes(false);
+        setPrizes(data);
+      } catch (e) {
+        console.error('PrizeTable error =', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPrizes();
+  }, []);
+
+  if (loading) {
+    return (
+      <div
+        className="rounded-2xl overflow-hidden bg-white"
+        style={{ border: '1.5px solid #C9341A20' }}
+      >
+        <div className="px-4 py-4 text-sm text-[#2D1500]/50 text-center">
+          載入中...
+        </div>
+      </div>
+    );
+  }
+
+  if (!prizes.length) {
+    return (
+      <div
+        className="rounded-2xl overflow-hidden bg-white"
+        style={{ border: '1.5px solid #C9341A20' }}
+      >
+        <div className="px-4 py-4 text-sm text-[#2D1500]/50 text-center">
+          目前沒有可顯示的獎項
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="rounded-2xl overflow-hidden bg-white"
-      style={{ border: '2px solid #C9341A25' }}
+      style={{ border: '1.5px solid #C9341A20' }}
     >
       <div
-        className="text-center py-3 px-4 text-sm font-bold tracking-widest text-[#C9341A] flex items-center justify-center gap-2"
+        className="grid items-center px-4 py-3 text-xs font-bold tracking-wider"
         style={{
-          fontFamily: '\'Noto Serif TC\', serif',
           background: '#FFF5F0',
-          borderBottom: '1.5px solid #C9341A20',
+          color: '#C9341A',
+          gridTemplateColumns: '48px minmax(0,1fr) 76px',
         }}
       >
-        <span className="text-[#C9A227]">✦</span>
-        中獎機率表
-        <span className="text-[#C9A227]">✦</span>
+        <div className="text-left">圖示</div>
+        <div className="text-center">獎項</div>
+        <div className="text-right">機率</div>
       </div>
-      <div className="divide-y" style={{ borderColor: '#C9341A10' }}>
-        {PRIZES.map((prize) => (
-          <div key={prize.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-[#FFF8F0] transition-colors">
-            <div className="flex items-center gap-3">
-              <span className="text-xl">{prize.emoji}</span>
-              <span
-                className="text-sm text-[#2D1500]/80"
-                style={{ fontFamily: '\'Noto Serif TC\', serif' }}
-              >
-                {prize.name}
-              </span>
+
+      {prizes.map((item) => (
+        <div
+          key={item.id}
+          className="grid items-center px-4 py-3"
+          style={{
+            borderTop: '1px solid #C9341A10',
+            gridTemplateColumns: '48px minmax(0,1fr) 76px',
+          }}
+        >
+          <div className="text-2xl leading-none">{item.emoji}</div>
+
+          <div className="text-center text-[#2D1500] leading-[1.25]">
+            <div className="text-[12px] sm:text-[13px] text-[#C9341A]/75">
+              {item.category_name}
             </div>
-            <div className="flex items-center gap-2">
-              <div
-                className="h-1.5 rounded-full"
-                style={{
-                  width: `${Math.max(prize.probability * 2, 4)}px`,
-                  background: `linear-gradient(90deg, #C9341A, #C9A227)`,
-                  minWidth: '4px',
-                  maxWidth: '70px',
-                }}
-              />
-              <span
-                className="text-xs font-mono font-bold min-w-12 text-right text-[#C9341A]"
-              >
-                {prize.probability}%
-              </span>
+            <div className="text-[14px] sm:text-[15px] font-medium">
+              {item.product_name}
             </div>
           </div>
-        ))}
-      </div>
+
+          <div
+            className="text-right font-bold text-[#C9341A] whitespace-nowrap"
+            style={{ fontSize: '15px' }}
+          >
+            {Number(item.weight).toFixed(1)}%
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

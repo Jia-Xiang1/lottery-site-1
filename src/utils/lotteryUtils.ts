@@ -1,88 +1,204 @@
-import { PRIZES, type Prize } from '../mocks/prizes';
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from '../lib/supabase';
 
-export interface LotteryRecord {
+export type LotteryRecord = {
+  id?: string;
   code: string;
-  prizeId: string;
+  prizeId?: string | null;
   prizeName: string;
   prizeEmoji: string;
   drawTime: string;
-  redeemTime?: string;
-}
+  redeemTime?: string | null;
+};
 
-export function drawPrize(): Prize {
-  const rand = Math.random() * 100;
-  let cumulative = 0;
-  for (const prize of PRIZES) {
-    cumulative += prize.probability;
-    if (rand <= cumulative) return prize;
-  }
-  return PRIZES[PRIZES.length - 1];
-}
+export type PrizeItem = {
+  id: string;
+  name?: string;
+  category_name: string;
+  product_name: string;
+  emoji: string;
+  weight: number;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
 
-export function generateCode(): string {
-  let code = '';
-  for (let i = 0; i < 8; i++) {
-    code += Math.floor(Math.random() * 10).toString();
-  }
-  return code;
-}
+export type DrawPrizeResponse =
+  | {
+      ok: true;
+      locked: false;
+      record: {
+        code: string;
+        prize_id: string;
+        prize_name: string;
+        prize_emoji: string;
+        draw_time: string;
+        view_expires_at: string;
+      };
+      expiresAt: string;
+      prize: {
+        id: string;
+        name: string;
+        category_name: string;
+        product_name: string;
+        emoji: string;
+        probability: number;
+      };
+    }
+  | {
+      ok: false;
+      locked: true;
+      message: string;
+      record: {
+        code: string;
+        prize_id: string;
+        prize_name: string;
+        prize_emoji: string;
+        draw_time: string;
+        view_expires_at: string;
+      };
+      expiresAt: string;
+    };
 
-export async function saveRecord(record: LotteryRecord): Promise<void> {
-  await supabase.from('lottery_records').insert({
-    code: record.code,
-    prize_id: record.prizeId,
-    prize_name: record.prizeName,
-    prize_emoji: record.prizeEmoji,
-    draw_time: record.drawTime,
-    redeem_time: record.redeemTime ?? null,
-  });
-}
+export type CurrentPrizeResponse =
+  | { status: 'none' }
+  | {
+      status: 'active';
+      record: {
+        code: string;
+        prize_id: string;
+        prize_name: string;
+        prize_emoji: string;
+        draw_time: string;
+        view_expires_at: string;
+      };
+      expiresAt: string;
+    }
+  | {
+      status: 'expired';
+      record: {
+        code: string;
+        prize_id: string;
+        prize_name: string;
+        prize_emoji: string;
+        draw_time: string;
+        view_expires_at: string;
+      };
+      expiredAt: string;
+    };
 
-export async function getAllRecords(): Promise<LotteryRecord[]> {
-  const { data, error } = await supabase
-    .from('lottery_records')
+export async function getAllPrizes(includeInactive = true): Promise<PrizeItem[]> {
+  let query = supabase
+    .from('prizes')
     .select('*')
-    .order('draw_time', { ascending: false });
-  if (error || !data) return [];
-  return data.map(row => ({
-    code: row.code,
-    prizeId: row.prize_id,
-    prizeName: row.prize_name,
-    prizeEmoji: row.prize_emoji,
-    drawTime: row.draw_time,
-    redeemTime: row.redeem_time ?? undefined,
+    .order('sort_order', { ascending: true });
+
+  if (!includeInactive) {
+    query = query.eq('is_active', true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((row) => ({
+    ...row,
+    category_name: row.category_name ?? '',
+    product_name: row.product_name ?? '',
+    weight: Number(row.weight),
+    sort_order: Number(row.sort_order),
   }));
 }
 
-export async function findRecord(code: string): Promise<LotteryRecord | null> {
-  const { data, error } = await supabase
-    .from('lottery_records')
-    .select('*')
-    .eq('code', code)
-    .maybeSingle();
-  if (error || !data) return null;
-  return {
-    code: data.code,
-    prizeId: data.prize_id,
-    prizeName: data.prize_name,
-    prizeEmoji: data.prize_emoji,
-    drawTime: data.draw_time,
-    redeemTime: data.redeem_time ?? undefined,
-  };
+export async function addPrize(input: {
+  category_name: string;
+  product_name: string;
+  emoji: string;
+  weight: number;
+  sort_order?: number;
+}) {
+  const name = `${input.category_name} ${input.product_name}`.trim();
+
+  const { error } = await supabase.from('prizes').insert({
+    name,
+    category_name: input.category_name,
+    product_name: input.product_name,
+    emoji: input.emoji,
+    weight: input.weight,
+    sort_order: input.sort_order ?? 0,
+    is_active: true,
+  });
+
+  if (error) throw error;
+  return true;
 }
 
-export async function redeemRecord(code: string): Promise<boolean> {
-  const existing = await findRecord(code);
-  if (!existing || existing.redeemTime) return false;
-  const { error } = await supabase
-    .from('lottery_records')
-    .update({ redeem_time: new Date().toISOString() })
-    .eq('code', code);
-  return !error;
+export async function updatePrize(
+  id: string,
+  input: Partial<{
+    category_name: string;
+    product_name: string;
+    emoji: string;
+    weight: number;
+    is_active: boolean;
+    sort_order: number;
+  }>
+) {
+  const payload: Record<string, unknown> = { ...input };
+
+  if (payload.weight !== undefined) payload.weight = Number(payload.weight);
+  if (payload.sort_order !== undefined) payload.sort_order = Number(payload.sort_order);
+
+  const categoryName =
+    typeof payload.category_name === 'string' ? payload.category_name : undefined;
+  const productName =
+    typeof payload.product_name === 'string' ? payload.product_name : undefined;
+
+  if (categoryName !== undefined || productName !== undefined) {
+    const { data: current, error: readError } = await supabase
+      .from('prizes')
+      .select('category_name, product_name')
+      .eq('id', id)
+      .single();
+
+    if (readError) throw readError;
+
+    const finalCategory = categoryName ?? current.category_name ?? '';
+    const finalProduct = productName ?? current.product_name ?? '';
+
+    payload.name = `${finalCategory} ${finalProduct}`.trim();
+    payload.category_name = finalCategory;
+    payload.product_name = finalProduct;
+  }
+
+  const { error } = await supabase.from('prizes').update(payload).eq('id', id);
+  if (error) throw error;
+  return true;
 }
 
-export function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, '0')}月${String(d.getDate()).padStart(2, '0')}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+export async function deletePrize(id: string) {
+  const { error } = await supabase.from('prizes').delete().eq('id', id);
+  if (error) throw error;
+  return true;
+}
+
+export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
+  const { data, error } = await supabase.functions.invoke('draw-lottery', {
+    body: {},
+  });
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('抽獎失敗，未取得結果');
+
+  return data as DrawPrizeResponse;
+}
+
+export async function getCurrentPrize(): Promise<CurrentPrizeResponse> {
+  const { data, error } = await supabase.functions.invoke('get-current-prize', {
+    body: {},
+  });
+
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error('讀取獎項失敗');
+
+  return data as CurrentPrizeResponse;
 }
