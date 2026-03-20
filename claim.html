@@ -1,1 +1,324 @@
 
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>領取優惠券</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body {
+      font-family: "Noto Sans TC", sans-serif;
+      background: #f7f7f7;
+      margin: 0;
+      padding: 16px;
+      color: #2d1500;
+    }
+
+    .wrap {
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.06);
+      margin-bottom: 16px;
+    }
+
+    .title {
+      font-size: 24px;
+      font-weight: 800;
+      color: #c9341a;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .coupon-box {
+      margin-top: 16px;
+      background: #fff7f2;
+      border: 1px dashed #c9341a66;
+      border-radius: 14px;
+      padding: 16px;
+    }
+
+    .coupon-name {
+      font-size: 22px;
+      font-weight: 800;
+      color: #c9341a;
+      margin-bottom: 8px;
+    }
+
+    .category {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #fff2e8;
+      color: #8b1a0a;
+      margin-bottom: 8px;
+    }
+
+    .meta {
+      font-size: 14px;
+      color: #444;
+      line-height: 1.9;
+    }
+
+    .meta strong {
+      color: #8b1a0a;
+    }
+
+    button {
+      width: 100%;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      margin-top: 14px;
+    }
+
+    .btn-primary {
+      background: #c9341a;
+      color: #fff;
+    }
+
+    .btn-secondary {
+      background: #fff;
+      color: #c9341a;
+      border: 1px solid #c9341a33;
+    }
+
+    .btn-primary:disabled,
+    .btn-secondary:disabled {
+      background: #ccc;
+      color: #fff;
+      border: none;
+      cursor: not-allowed;
+    }
+
+    .result {
+      margin-top: 14px;
+      background: #f9fbf6;
+      border: 1px solid #d7ebd1;
+      border-radius: 12px;
+      padding: 14px;
+      line-height: 1.9;
+      font-size: 14px;
+    }
+
+    .error {
+      margin-top: 14px;
+      background: #fff2f1;
+      border: 1px solid #f3c7c1;
+      border-radius: 12px;
+      padding: 14px;
+      line-height: 1.8;
+      font-size: 14px;
+      color: #b42318;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: #888;
+      margin-top: 8px;
+      line-height: 1.7;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="title">🎁 領取優惠券</div>
+      <div class="subtitle">
+        請確認店員已核對中獎項目後，再按下領券。
+      </div>
+
+      <div class="coupon-box">
+        <div id="category" class="category">載入中...</div>
+        <div id="couponName" class="coupon-name">載入中...</div>
+        <div class="meta">
+          <div><strong>來源：</strong><span id="sourceText">載入中...</span></div>
+          <div><strong>啟用規則：</strong>領取日隔天啟用</div>
+          <div><strong>使用期限：</strong>啟用日後 7 天內</div>
+        </div>
+      </div>
+
+      <button id="claimBtn" class="btn-primary" onclick="claimCoupon()">確認領券</button>
+      <button class="btn-secondary" onclick="goToCouponList()">查看我的優惠券</button>
+
+      <div class="hint">
+        若重複快速點擊，系統可能會擋下同一張券的重複領取。
+      </div>
+
+      <div id="messageArea"></div>
+    </div>
+  </div>
+
+<script>
+const liffId = "2009551865-EGhyWa2w";
+const gasUrl = "https://script.google.com/macros/s/AKfycbxBsh3bbOKRjVv_M-nGkcergiYVSn215sdNr1j6rO_wyfrBy8NLQGZ0JxyOqlD3c8A/exec";
+const couponListUrl = "https://liff.line.me/2009551865-EGhyWa2w"; // 例如 https://liff.line.me/你的券包LIFF_ID
+
+function getParam(name) {
+  const url = new URL(window.location.href);
+  return url.searchParams.get(name) || "";
+}
+
+function getCoupon() {
+  return getParam("coupon") || "未指定券種";
+}
+
+function getCategory() {
+  return getParam("category") || "其他";
+}
+
+function getSource() {
+  return getParam("from") || "QR/NFC";
+}
+
+async function init() {
+  try {
+    await liff.init({ liffId });
+
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return;
+    }
+
+    document.getElementById("couponName").innerText = getCoupon();
+    document.getElementById("category").innerText = getCategory();
+    document.getElementById("sourceText").innerText = getSource();
+  } catch (err) {
+    renderError("LIFF 初始化失敗：" + err.message);
+    console.error(err);
+  }
+}
+
+async function getProfile() {
+  if (!liff.isLoggedIn()) {
+    liff.login();
+    return null;
+  }
+  return await liff.getProfile();
+}
+
+async function postToGas(payload) {
+  const formBody = new URLSearchParams(payload).toString();
+
+  const res = await fetch(gasUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: formBody
+  });
+
+  const text = await res.text();
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error("伺服器回應格式錯誤：" + text);
+  }
+}
+
+async function claimCoupon() {
+  try {
+    const btn = document.getElementById("claimBtn");
+    btn.disabled = true;
+
+    const profile = await getProfile();
+    if (!profile) {
+      btn.disabled = false;
+      return;
+    }
+
+    const result = await postToGas({
+      action: "claim",
+      userId: profile.userId,
+      name: profile.displayName,
+      coupon: getCoupon(),
+      category: getCategory(),
+      source: getSource()
+    });
+
+    if (!result.success) {
+      renderError(result.message || "領券失敗");
+      btn.disabled = false;
+      return;
+    }
+
+    renderSuccess(result.item);
+    btn.disabled = true;
+  } catch (err) {
+    renderError("領券失敗：" + err.message);
+    console.error(err);
+    document.getElementById("claimBtn").disabled = false;
+  }
+}
+
+function renderSuccess(item) {
+  const html = `
+    <div class="result">
+      <div><strong>領券成功</strong></div>
+      <div><strong>券別：</strong>${escapeHtml(item.coupon)}</div>
+      <div><strong>分類：</strong>${escapeHtml(item.category)}</div>
+      <div><strong>領取日：</strong>${formatDate(item.claimedAt)}</div>
+      <div><strong>啟用日：</strong>${formatDate(item.activateAt)}</div>
+      <div><strong>到期日：</strong>${formatDate(item.expireAt)}</div>
+      <div><strong>狀態：</strong>${escapeHtml(item.status)}</div>
+      <div><strong>券號：</strong>${escapeHtml(item.couponId)}</div>
+
+      <div style="margin-top:14px;">
+        <button class="btn-secondary" onclick="goToCouponList()">
+          前往我的優惠券
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("messageArea").innerHTML = html;
+}
+
+function renderError(message) {
+  document.getElementById("messageArea").innerHTML = `
+    <div class="error">${escapeHtml(message)}</div>
+  `;
+}
+
+function goToCouponList() {
+  if (couponListUrl) {
+    window.location.href = couponListUrl;
+  }
+}
+
+function formatDate(value) {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value || "";
+  return d.toLocaleString("zh-TW");
+}
+
+function escapeHtml(str) {
+  return String(str || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+init();
+</script>
+</body>
+</html>
