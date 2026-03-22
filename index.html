@@ -64,78 +64,39 @@
     <div id="root"></div>
 
     <script>
-      const LIFF_ID = "2009551865-w1GySXcD";
-      const ADD_FRIEND_URL = "https://line.me/R/ti/p/@209sgiku";
-      const REDIRECT_URI = "https://jia-xiang1.github.io/lottery-site-1/";
+  const LIFF_ID = "2009551865-w1GySXcD";
 
-      async function checkFriend() {
-        const gate = document.getElementById("gate");
-        const gateCard = document.getElementById("gateCard");
-        const root = document.getElementById("root");
+  async function checkFriend() {
+    await liff.init({
+      liffId: LIFF_ID,
+      withLoginOnExternalBrowser: true
+    });
 
-        try {
-          gateCard.innerHTML = "LIFF 初始化中…";
-
-          if (typeof liff === "undefined") {
-            throw new Error("LIFF SDK 未載入");
-          }
-
-          await liff.init({
-            liffId: LIFF_ID,
-            withLoginOnExternalBrowser: true
-          });
-
-          const inClient = liff.isInClient();
-          const loggedIn = liff.isLoggedIn();
-
-          if (!loggedIn) {
-            if (!inClient) {
-              liff.login({ redirectUri: REDIRECT_URI });
-              return;
-            } else {
-              gateCard.innerHTML = `
-                <div>請從 LINE 內重新開啟此頁</div>
-                <div class="debug">
-isInClient: ${inClient}
-isLoggedIn: ${loggedIn}
-url: ${location.href}
-                </div>
-              `;
-              return;
-            }
-          }
-
-          const friendship = await liff.getFriendship();
-
-          if (!friendship.friendFlag) {
-            gateCard.innerHTML = `
-              <div style="font-size:28px;font-weight:bold;">請先加入好友</div>
-              <div style="margin-top:12px;">加入官方好友後，才可以進行抽獎。</div>
-              <a class="btn" href="${ADD_FRIEND_URL}" target="_blank" rel="noopener noreferrer">
-                加入好友
-              </a>
-            `;
-            return;
-          }
-
-          gate.style.display = "none";
-          root.style.display = "block";
-        } catch (err) {
-          console.error("LIFF ERROR:", err);
-          gateCard.innerHTML = `
-            <div style="font-size:28px;font-weight:bold;">LIFF 載入失敗</div>
-            <div class="debug">
-message: ${err?.message || "無"}
-name: ${err?.name || "無"}
-url: ${location.href}
-userAgent: ${navigator.userAgent}
-            </div>
-          `;
-        }
+    // 在 LINE 內，不要再手動 liff.login()
+    if (!liff.isLoggedIn()) {
+      if (!liff.isInClient()) {
+        liff.login({
+          redirectUri: "https://jia-xiang1.github.io/lottery-site-1/"
+        });
+      } else {
+        document.getElementById("gateCard").innerHTML = "請從 LINE 內重新開啟此頁";
       }
+      return;
+    }
 
-      window.addEventListener("load", checkFriend);
-    </script>
+    const friendship = await liff.getFriendship();
+
+    if (!friendship.friendFlag) {
+      document.getElementById("gateCard").innerHTML = "請先加入好友";
+      return;
+    }
+
+    document.getElementById("gate").style.display = "none";
+    document.getElementById("root").style.display = "block";
+  }
+
+  window.addEventListener("load", checkFriend);
+</script>
 
     <script type="module" src="/src/main.tsx"></script>
   </body>
