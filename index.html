@@ -7,99 +7,135 @@
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
       body {
-        font-family: Arial, sans-serif;
-        padding: 24px;
         margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f7f7f7;
+      }
+      #gate {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      .gate-card {
+        width: 100%;
+        max-width: 680px;
+        background: #fff;
+        border-radius: 16px;
+        padding: 28px 22px;
+        box-sizing: border-box;
+        text-align: center;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        line-height: 1.7;
+      }
+      .btn {
+        display: inline-block;
+        margin-top: 14px;
+        padding: 12px 18px;
+        border-radius: 10px;
+        text-decoration: none;
+        font-size: 18px;
+        background: #06c755;
+        color: #fff;
+      }
+      .debug {
+        margin-top: 18px;
+        text-align: left;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #c62828;
+        background: #f3f3f3;
+        border-radius: 10px;
+        padding: 12px;
+        font-size: 14px;
       }
       #root {
         display: none;
       }
-      .box {
-        max-width: 640px;
-        margin: 40px auto;
-        text-align: center;
-        line-height: 1.7;
-        word-break: break-word;
-      }
-      .error {
-        color: #c62828;
-        white-space: pre-wrap;
-        text-align: left;
-        margin-top: 16px;
-        background: #f5f5f5;
-        padding: 12px;
-        border-radius: 8px;
-      }
     </style>
   </head>
   <body>
-    <div id="gate" class="box">載入中…</div>
+    <div id="gate">
+      <div class="gate-card" id="gateCard">載入中…</div>
+    </div>
+
     <div id="root"></div>
 
     <script>
-  const LIFF_ID = "2009551865-w1GySXcD";
-  const ADD_FRIEND_URL = "https://line.me/R/ti/p/@209sgiku";
+      const LIFF_ID = "2009551865-w1GySXcD";
+      const ADD_FRIEND_URL = "https://line.me/R/ti/p/@209sgiku";
+      const REDIRECT_URI = "https://jia-xiang1.github.io/lottery-site-1/";
 
-  async function checkFriend() {
-    const gate = document.getElementById("gate");
-    const root = document.getElementById("root");
+      async function checkFriend() {
+        const gate = document.getElementById("gate");
+        const gateCard = document.getElementById("gateCard");
+        const root = document.getElementById("root");
 
-    try {
-      gate.innerHTML = "LIFF 初始化中…";
+        try {
+          gateCard.innerHTML = "LIFF 初始化中…";
 
-      await liff.init({
-        liffId: LIFF_ID,
-        withLoginOnExternalBrowser: true
-      });
+          if (typeof liff === "undefined") {
+            throw new Error("LIFF SDK 未載入");
+          }
 
-      const inClient = liff.isInClient();
-      const loggedIn = liff.isLoggedIn();
-
-      gate.innerHTML =
-        "LIFF 初始化成功<br>" +
-        "isInClient: " + inClient + "<br>" +
-        "isLoggedIn: " + loggedIn;
-
-      // 只在「LINE 外部瀏覽器」才做 login
-      if (!loggedIn) {
-        if (!inClient) {
-          liff.login({
-            redirectUri: "https://jia-xiang1.github.io/lottery-site-1/"
+          await liff.init({
+            liffId: LIFF_ID,
+            withLoginOnExternalBrowser: true
           });
-          return;
-        } else {
-          gate.innerHTML = "請從 LINE 內重新開啟此頁";
-          return;
+
+          const inClient = liff.isInClient();
+          const loggedIn = liff.isLoggedIn();
+
+          if (!loggedIn) {
+            if (!inClient) {
+              liff.login({ redirectUri: REDIRECT_URI });
+              return;
+            } else {
+              gateCard.innerHTML = `
+                <div>請從 LINE 內重新開啟此頁</div>
+                <div class="debug">
+isInClient: ${inClient}
+isLoggedIn: ${loggedIn}
+url: ${location.href}
+                </div>
+              `;
+              return;
+            }
+          }
+
+          const friendship = await liff.getFriendship();
+
+          if (!friendship.friendFlag) {
+            gateCard.innerHTML = `
+              <div style="font-size:28px;font-weight:bold;">請先加入好友</div>
+              <div style="margin-top:12px;">加入官方好友後，才可以進行抽獎。</div>
+              <a class="btn" href="${ADD_FRIEND_URL}" target="_blank" rel="noopener noreferrer">
+                加入好友
+              </a>
+            `;
+            return;
+          }
+
+          gate.style.display = "none";
+          root.style.display = "block";
+        } catch (err) {
+          console.error("LIFF ERROR:", err);
+          gateCard.innerHTML = `
+            <div style="font-size:28px;font-weight:bold;">LIFF 載入失敗</div>
+            <div class="debug">
+message: ${err?.message || "無"}
+name: ${err?.name || "無"}
+url: ${location.href}
+userAgent: ${navigator.userAgent}
+            </div>
+          `;
         }
       }
 
-      const friendship = await liff.getFriendship();
-
-      if (!friendship.friendFlag) {
-        gate.innerHTML = `
-          <div style="text-align:center;padding:40px;font-size:20px">
-            請先加入好友才能抽獎<br><br>
-            <a href="${ADD_FRIEND_URL}" style="font-size:22px;color:#06C755">
-              加入好友
-            </a>
-          </div>
-        `;
-        return;
-      }
-
-      gate.style.display = "none";
-      root.style.display = "block";
-    } catch (err) {
-      console.error("LIFF ERROR:", err);
-      gate.innerHTML = `
-        <div>LIFF 載入失敗</div>
-        <pre style="color:red;white-space:pre-wrap;text-align:left;">${err?.message || err}</pre>
-      `;
-    }
-  }
-
-  window.addEventListener("load", checkFriend);
-</script>
+      window.addEventListener("load", checkFriend);
+    </script>
 
     <script type="module" src="/src/main.tsx"></script>
   </body>
