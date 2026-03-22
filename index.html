@@ -1,19 +1,50 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title></title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.5.0/remixicon.min.css">
-    <script type="module" crossorigin src="/lottery-site-1/assets/index-UZknyYYd.js"></script>
-    <link rel="stylesheet" crossorigin href="/lottery-site-1/assets/index-C6D-zbW_.css">
+    <title>好友限定抽獎</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   </head>
   <body>
     <div id="root"></div>
+
+    <script>
+      const LIFF_ID = "2009551865-w1GySXcD";
+      const ADD_FRIEND_URL = "https://line.me/R/ti/p/@209sgiku";
+
+      async function checkFriend() {
+        try {
+          await liff.init({ liffId: LIFF_ID, withLoginOnExternalBrowser: true });
+
+          if (!liff.isLoggedIn()) {
+            liff.login();
+            return;
+          }
+
+          const friendship = await liff.getFriendship();
+
+          if (!friendship.friendFlag) {
+            document.body.innerHTML = `
+              <div style="text-align:center;padding:40px;font-size:20px">
+                請先加入好友才能抽獎<br><br>
+                <a href="${ADD_FRIEND_URL}" style="font-size:22px;color:#06C755">加入好友</a>
+              </div>
+            `;
+          }
+        } catch (err) {
+          console.error(err);
+          document.body.innerHTML = `
+            <div style="text-align:center;padding:40px;font-size:20px">
+              載入失敗，請重新從 LINE 開啟
+            </div>
+          `;
+        }
+      }
+
+      checkFriend();
+    </script>
+
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
