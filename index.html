@@ -1,4 +1,69 @@
-<script>
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>好友限定抽獎</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <style>
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f7f7f7;
+      }
+      #gate {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+      .gate-card {
+        width: 100%;
+        max-width: 680px;
+        background: #fff;
+        border-radius: 16px;
+        padding: 28px 22px;
+        box-sizing: border-box;
+        text-align: center;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        line-height: 1.7;
+      }
+      .btn {
+        display: inline-block;
+        margin-top: 14px;
+        padding: 12px 18px;
+        border-radius: 10px;
+        text-decoration: none;
+        font-size: 18px;
+        background: #06c755;
+        color: #fff;
+      }
+      .debug {
+        margin-top: 18px;
+        text-align: left;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #c62828;
+        background: #f3f3f3;
+        border-radius: 10px;
+        padding: 12px;
+        font-size: 14px;
+      }
+      #root {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="gate">
+      <div class="gate-card" id="gateCard">載入中…</div>
+    </div>
+
+    <div id="root"></div>
+
+  <script>
   const LIFF_ID = "2009551865-w1GySXcD";
   const ADD_FRIEND_URL = "https://line.me/R/ti/p/@209sgiku";
   const REDIRECT_URI = "https://jia-xiang1.github.io/lottery-site-1/";
@@ -88,3 +153,7 @@ userAgent: ${navigator.userAgent}
 
   window.addEventListener("load", checkFriend);
 </script>
+
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>
