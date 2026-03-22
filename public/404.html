@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Redirecting…</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        var repoBase = "/lottery-site-1/";
+        var current = window.location.pathname + window.location.search + window.location.hash;
+
+        // 把錯誤路徑帶回首頁，用 hash 保存，避免再次被 Pages 當成路徑
+        var target =
+          repoBase +
+          "#/liff-redirect?from404=1&path=" +
+          encodeURIComponent(current);
+
+        window.location.replace(target);
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

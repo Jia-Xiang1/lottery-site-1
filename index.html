@@ -63,72 +63,73 @@
 
     <div id="root"></div>
 
-<script type="module">
-  const LIFF_ID = "2009551865-w1GySXcD";
-  const ADD_FRIEND_URL = "https://line.me/R/ti/p/@209sgiku";
+    <script type="module">
+      const LIFF_ID = "2009551865-w1GySXcD";
+      const ADD_FRIEND_URL = "https://line.me/R/ti/p/@209sgiku";
 
-  async function checkFriend() {
-    const gate = document.getElementById("gate");
-    const gateCard = document.getElementById("gateCard");
-    const root = document.getElementById("root");
+      async function checkFriend() {
+        const gate = document.getElementById("gate");
+        const gateCard = document.getElementById("gateCard");
+        const root = document.getElementById("root");
 
-    try {
-      gateCard.innerHTML = "LIFF 初始化中…";
+        try {
+          gateCard.innerHTML = "LIFF 初始化中…";
 
-      await liff.init({
-        liffId: LIFF_ID,
-        withLoginOnExternalBrowser: true
-      });
+          await liff.init({
+            liffId: LIFF_ID,
+            withLoginOnExternalBrowser: true
+          });
 
-      // 如果是 404 接回來的網址，清掉 hash，回到正常首頁
-      if (location.hash.startsWith("#/liff-redirect")) {
-        history.replaceState(null, "", "/lottery-site-1/");
-      }
+          if (location.hash.startsWith("#/liff-redirect")) {
+            history.replaceState(null, "", "/lottery-site-1/");
+          }
 
-      const inClient = liff.isInClient();
-      const loggedIn = liff.isLoggedIn();
+          const inClient = liff.isInClient();
+          const loggedIn = liff.isLoggedIn();
 
-      if (!loggedIn) {
-        gateCard.innerHTML = `
-          <div style="font-size:28px;font-weight:bold;">尚未登入 LIFF</div>
-          <div style="margin-top:12px;">請直接從 LINE 內重新開啟這個 LIFF 連結。</div>
-          <div class="debug">
+          if (!loggedIn) {
+            gateCard.innerHTML = `
+              <div style="font-size:28px;font-weight:bold;">尚未登入 LIFF</div>
+              <div style="margin-top:12px;">請直接從 LINE 內重新開啟這個 LIFF 連結。</div>
+              <div class="debug">
 isInClient: ${inClient}
 isLoggedIn: ${loggedIn}
 url: ${location.href}
-          </div>
-        `;
-        return;
-      }
+              </div>
+            `;
+            return;
+          }
 
-      const friendship = await liff.getFriendship();
+          const friendship = await liff.getFriendship();
 
-      if (!friendship.friendFlag) {
-        gateCard.innerHTML = `
-          <div style="font-size:28px;font-weight:bold;">請先加入好友</div>
-          <div style="margin-top:12px;">加入官方好友後，才可以進行抽獎。</div>
-          <a class="btn" href="${ADD_FRIEND_URL}" target="_blank" rel="noopener noreferrer">
-            加入好友
-          </a>
-        `;
-        return;
-      }
+          if (!friendship.friendFlag) {
+            gateCard.innerHTML = `
+              <div style="font-size:28px;font-weight:bold;">請先加入好友</div>
+              <div style="margin-top:12px;">加入官方好友後，才可以進行抽獎。</div>
+              <a class="btn" href="${ADD_FRIEND_URL}" target="_blank" rel="noopener noreferrer">
+                加入好友
+              </a>
+            `;
+            return;
+          }
 
-      gate.style.display = "none";
-      root.style.display = "block";
-    } catch (err) {
-      gateCard.innerHTML = `
-        <div style="font-size:28px;font-weight:bold;">LIFF 載入失敗</div>
-        <div class="debug">
+          gate.style.display = "none";
+          root.style.display = "block";
+        } catch (err) {
+          gateCard.innerHTML = `
+            <div style="font-size:28px;font-weight:bold;">LIFF 載入失敗</div>
+            <div class="debug">
 message: ${err?.message || "無"}
 name: ${err?.name || "無"}
 url: ${location.href}
-        </div>
-      `;
-    }
-  }
+            </div>
+          `;
+        }
+      }
 
-  window.addEventListener("load", checkFriend);
-</script>
+      window.addEventListener("load", checkFriend);
+    </script>
+
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>
