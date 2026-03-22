@@ -67,6 +67,8 @@
       const LIFF_ID = "2009551865-w1GySXcD";
       const ADD_FRIEND_URL = "https://line.me/R/ti/p/@209sgiku";
 
+      let checkingFriend = false;
+
       async function checkFriend() {
         const gate = document.getElementById("gate");
         const gateCard = document.getElementById("gateCard");
@@ -105,14 +107,32 @@ url: ${location.href}
           if (!friendship.friendFlag) {
             gateCard.innerHTML = `
               <div style="font-size:28px;font-weight:bold;">請先加入好友</div>
-              <div style="margin-top:12px;">加入官方好友後，才可以進行抽獎。</div>
-              <a class="btn" href="${ADD_FRIEND_URL}" target="_blank" rel="noopener noreferrer">
+              <div style="margin-top:12px;">加入後會自動回到抽獎頁。</div>
+
+              <a
+                id="addFriendBtn"
+                class="btn"
+                href="${ADD_FRIEND_URL}"
+                rel="noopener noreferrer"
+              >
                 加入好友
               </a>
+
+              <div class="debug">
+friendFlag: ${friendship.friendFlag}
+url: ${location.href}
+              </div>
             `;
+
+            const addFriendBtn = document.getElementById("addFriendBtn");
+            addFriendBtn?.addEventListener("click", () => {
+              sessionStorage.setItem("waiting_friendship_check", "1");
+            });
+
             return;
           }
 
+          sessionStorage.removeItem("waiting_friendship_check");
           gate.style.display = "none";
           root.style.display = "block";
         } catch (err) {
@@ -127,7 +147,22 @@ url: ${location.href}
         }
       }
 
+      async function recheckIfNeeded() {
+        if (document.visibilityState !== "visible") return;
+        if (sessionStorage.getItem("waiting_friendship_check") !== "1") return;
+        if (checkingFriend) return;
+
+        checkingFriend = true;
+        try {
+          await checkFriend();
+        } finally {
+          checkingFriend = false;
+        }
+      }
+
       window.addEventListener("load", checkFriend);
+      window.addEventListener("visibilitychange", recheckIfNeeded);
+      window.addEventListener("focus", recheckIfNeeded);
     </script>
 
     <script type="module" src="./src/main.tsx"></script>
