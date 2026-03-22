@@ -63,13 +63,11 @@
 
     <div id="root"></div>
 
-    <script type="module">
+    <script type="module" src="./src/main.tsx"></script>
+
+    <script>
       const LIFF_ID = "2009551865-w1GySXcD";
       const ADD_FRIEND_URL = "https://line.me/R/ti/p/@209sgiku";
-
-      async function loadReactApp() {
-        await import("./src/main.tsx");
-      }
 
       async function checkFriend() {
         const gate = document.getElementById("gate");
@@ -123,8 +121,6 @@ url: ${location.href}
 
           gate.style.display = "none";
           root.style.display = "block";
-
-          await loadReactApp();
         } catch (err) {
           console.error("LIFF ERROR:", err);
           gateCard.innerHTML = `

@@ -55,7 +55,8 @@
         display: none;
       }
     </style>
-    <script type="module" crossorigin src="/lottery-site-1/assets/index-nsOZPXZC.js"></script>
+    <script type="module" crossorigin src="/lottery-site-1/assets/index-UZknyYYd.js"></script>
+    <link rel="stylesheet" crossorigin href="/lottery-site-1/assets/index-C6D-zbW_.css">
   </head>
   <body>
     <div id="gate">
@@ -64,5 +65,79 @@
 
     <div id="root"></div>
 
+
+    <script>
+      const LIFF_ID = "2009551865-w1GySXcD";
+      const ADD_FRIEND_URL = "https://line.me/R/ti/p/@209sgiku";
+
+      async function checkFriend() {
+        const gate = document.getElementById("gate");
+        const gateCard = document.getElementById("gateCard");
+        const root = document.getElementById("root");
+
+        try {
+          gateCard.innerHTML = "LIFF 初始化中…";
+
+          if (typeof liff === "undefined") {
+            throw new Error("LIFF SDK 未載入");
+          }
+
+          await liff.init({
+            liffId: LIFF_ID,
+            withLoginOnExternalBrowser: true
+          });
+
+          const inClient = liff.isInClient();
+          const loggedIn = liff.isLoggedIn();
+
+          if (!loggedIn) {
+            gateCard.innerHTML = `
+              <div style="font-size:28px;font-weight:bold;">尚未登入 LIFF</div>
+              <div style="margin-top:12px;">請直接從 LINE 內重新開啟這個 LIFF 連結。</div>
+              <div class="debug">
+isInClient: ${inClient}
+isLoggedIn: ${loggedIn}
+url: ${location.href}
+              </div>
+            `;
+            return;
+          }
+
+          const friendship = await liff.getFriendship();
+
+          if (!friendship.friendFlag) {
+            gateCard.innerHTML = `
+              <div style="font-size:28px;font-weight:bold;">請先加入好友</div>
+              <div style="margin-top:12px;">加入官方好友後，才可以進行抽獎。</div>
+              <a class="btn" href="${ADD_FRIEND_URL}" target="_blank" rel="noopener noreferrer">
+                加入好友
+              </a>
+              <div class="debug">
+friendFlag: ${friendship.friendFlag}
+url: ${location.href}
+              </div>
+            `;
+            return;
+          }
+
+          gate.style.display = "none";
+          root.style.display = "block";
+        } catch (err) {
+          console.error("LIFF ERROR:", err);
+          gateCard.innerHTML = `
+            <div style="font-size:28px;font-weight:bold;">LIFF 載入失敗</div>
+            <div class="debug">
+message: ${err?.message || "無"}
+name: ${err?.name || "無"}
+stack: ${err?.stack || "無"}
+url: ${location.href}
+userAgent: ${navigator.userAgent}
+            </div>
+          `;
+        }
+      }
+
+      window.addEventListener("load", checkFriend);
+    </script>
   </body>
 </html>
