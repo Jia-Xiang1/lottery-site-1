@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import LotteryDrum from './components/LotteryDrum';
 import PrizeResultCard from './components/PrizeResultCard';
 import PrizeTable from './components/PrizeTable';
@@ -37,22 +38,25 @@ function formatRemainingText(expiresAt: string) {
 
 function getCouponCategory(prizeName: string) {
   if (prizeName === '甜點') return '甜點';
-  if (prizeName === '特色小菜' ) return '特色小菜';
-  if (prizeName === '單點主菜' ) return '單點主菜';
+  if (prizeName === '特色小菜') return '特色小菜';
+  if (prizeName === '單點主菜') return '單點主菜';
 
   if (
     prizeName === '現金折$20元' ||
     prizeName === '現金折$50元' ||
-    prizeName === '現金折$100元'||
+    prizeName === '現金折$100元' ||
     prizeName === '現金折$200元'
   ) {
     return '現金卷';
   }
+
   if (prizeName === '下一碗免費') return '特獎類';
   return '其他';
 }
 
 export default function Home() {
+  const navigate = useNavigate();
+
   const [phase, setPhase] = useState<Phase>('idle');
   const [finalPrize, setFinalPrize] = useState<DisplayPrize | null>(null);
   const [currentRecord, setCurrentRecord] = useState<LotteryRecord | null>(null);
@@ -164,7 +168,7 @@ export default function Home() {
       />
 
       <div
-        className="w-full flex items-center justify-between px-6 py-3 bg-white"
+        className="w-full flex items-center justify-between px-6 py-3 bg-white relative z-20"
         style={{ borderBottom: '2px solid #C9341A20' }}
       >
         <div className="flex items-center gap-2">
@@ -177,8 +181,9 @@ export default function Home() {
           </span>
         </div>
 
-        <a
-          href="https://jia-xiang1.github.io/lottery-site-1/#/admin"
+        <button
+          type="button"
+          onClick={() => navigate('/admin')}
           className="flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-200 cursor-pointer whitespace-nowrap hover:opacity-80"
           style={{
             background: '#FFF5F0',
@@ -188,7 +193,7 @@ export default function Home() {
         >
           <i className="ri-shield-keyhole-line text-sm" />
           後台管理系統
-        </a>
+        </button>
       </div>
 
       <div className="w-full max-w-lg mx-auto px-6 py-8 flex flex-col items-center">
