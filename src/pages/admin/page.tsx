@@ -16,7 +16,7 @@ type PrizeConfig = {
 };
 
 const API_BASE = "https://script.google.com/macros/s/AKfycbwqNjpZqi4i_YI-XlwoOIhiP6oLs2mpaqxwruaHJP-vNvY9UN6kVItjpGpsBCh3u0IK/exec";
-
+const ADMIN_PASSWORD = "riceking168";
 const emptyForm = {
   id: "",
   name: "",
@@ -32,6 +32,8 @@ const emptyForm = {
 
 export default function AdminPage() {
   const navigate = useNavigate();
+  const [passwordInput, setPasswordInput] = useState("");
+  const [isUnlocked, setIsUnlocked] = useState(sessionStorage.getItem("admin_unlocked") === "true");
   const [items, setItems] = useState<PrizeConfig[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [keyword, setKeyword] = useState("");
@@ -131,6 +133,17 @@ export default function AdminPage() {
     setIsCreating(false);
     setSelectedId("");
     setForm(emptyForm);
+  }
+
+  function handleUnlock() {
+  if (passwordInput === ADMIN_PASSWORD) {
+    sessionStorage.setItem("admin_unlocked", "true");
+    setIsUnlocked(true);
+    setPasswordInput("");
+    return;
+  }
+
+  alert("密碼錯誤");
   }
 
   function validateForm() {
@@ -298,30 +311,58 @@ export default function AdminPage() {
 
   const editorTitle = isCreating ? "新增品項" : "品項詳細設定";
 
+if (!isUnlocked) {
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-       <div style={styles.topHeader}>
-        <h1 style={styles.title}>後台管理系統</h1>
+        <div style={styles.topHeader}>
+          <h1 style={styles.title}>後台管理系統</h1>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
             type="button"
             style={styles.secondaryButton}
             onClick={() => navigate("/")}
-           >
+          >
             返回前台
           </button>
+        </div>
 
-          <button
-            type="button"
-            style={styles.addButton}
-            onClick={startCreate}
-          >
-            ＋ 新增品項
-          </button>
+        <h2 style={styles.sectionTitle}>輸入管理密碼</h2>
+
+        <div style={{ maxWidth: 420 }}>
+          <input
+            type="password"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleUnlock();
+            }}
+            placeholder="請輸入後台密碼"
+            style={styles.input}
+          />
+
+          <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+            <button
+              type="button"
+              style={styles.secondaryButton}
+              onClick={() => navigate("/")}
+            >
+              返回前台
+            </button>
+
+            <button
+              type="button"
+              style={styles.primaryButton}
+              onClick={handleUnlock}
+            >
+              進入後台
+            </button>
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
 
         <div style={styles.notice}>
           目前總機率：<b>{totalRate}%</b>
