@@ -19,6 +19,11 @@ export type PrizeItem = {
   weight: number;
   is_active: boolean;
   sort_order: number;
+  coupon_name_code?: string;
+  activation_type?: 'same_day' | 'next_day' | 'fixed_date';
+  fixed_activate_date?: string | null;
+  valid_months?: number;
+  note?: string;
   created_at: string;
   updated_at: string;
 };
@@ -106,6 +111,11 @@ export async function getAllPrizes(includeInactive = true): Promise<PrizeItem[]>
     product_name: row.product_name ?? '',
     weight: Number(row.weight),
     sort_order: Number(row.sort_order),
+    valid_months: Number(row.valid_months ?? 1),
+    coupon_name_code: row.coupon_name_code ?? '',
+    activation_type: row.activation_type ?? 'same_day',
+    fixed_activate_date: row.fixed_activate_date ?? '',
+    note: row.note ?? '',
   }));
 }
 
@@ -115,6 +125,11 @@ export async function addPrize(input: {
   emoji: string;
   weight: number;
   sort_order?: number;
+  coupon_name_code?: string;
+  activation_type?: 'same_day' | 'next_day' | 'fixed_date';
+  fixed_activate_date?: string | null;
+  valid_months?: number;
+  note?: string;
 }) {
   const name = `${input.category_name} ${input.product_name}`.trim();
 
@@ -123,9 +138,17 @@ export async function addPrize(input: {
     category_name: input.category_name,
     product_name: input.product_name,
     emoji: input.emoji,
-    weight: input.weight,
-    sort_order: input.sort_order ?? 0,
+    weight: Number(input.weight),
+    sort_order: Number(input.sort_order ?? 0),
     is_active: true,
+    coupon_name_code: input.coupon_name_code ?? '',
+    activation_type: input.activation_type ?? 'same_day',
+    fixed_activate_date:
+      input.activation_type === 'fixed_date'
+        ? input.fixed_activate_date ?? null
+        : null,
+    valid_months: Number(input.valid_months ?? 1),
+    note: input.note ?? '',
   });
 
   if (error) throw error;
@@ -141,12 +164,20 @@ export async function updatePrize(
     weight: number;
     is_active: boolean;
     sort_order: number;
+    coupon_name_code: string;
+    activation_type: 'same_day' | 'next_day' | 'fixed_date';
+    fixed_activate_date: string | null;
+    valid_months: number;
+    note: string;
   }>
 ) {
   const payload: Record<string, unknown> = { ...input };
 
   if (payload.weight !== undefined) payload.weight = Number(payload.weight);
   if (payload.sort_order !== undefined) payload.sort_order = Number(payload.sort_order);
+  if (payload.valid_months !== undefined) {
+    payload.valid_months = Number(payload.valid_months);
+  }
 
   const categoryName =
     typeof payload.category_name === 'string' ? payload.category_name : undefined;
@@ -168,6 +199,13 @@ export async function updatePrize(
     payload.name = `${finalCategory} ${finalProduct}`.trim();
     payload.category_name = finalCategory;
     payload.product_name = finalProduct;
+  }
+
+  if (
+    payload.activation_type !== undefined &&
+    payload.activation_type !== 'fixed_date'
+  ) {
+    payload.fixed_activate_date = null;
   }
 
   const { error } = await supabase.from('prizes').update(payload).eq('id', id);

@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  addPrize,
+  deletePrize,
+  getAllPrizes,
+  updatePrize,
+  type PrizeItem,
+} from "../../utils/lotteryUtils";
 
 type PrizeConfig = {
   sortOrder: number | string;
   id: string;
   品項名稱: string;
-  機率: number | string;
   分類: string;
+  商品名稱: string;
+  emoji: string;
+  機率: number | string;
   couponNameCode: string;
   啟用方式: "same_day" | "next_day" | "fixed_date";
   指定啟用日: string;
@@ -15,16 +24,14 @@ type PrizeConfig = {
   啟用: boolean | string;
 };
 
-const API_BASE =
-  "https://script.google.com/macros/s/AKfycbwqNjpZqi4i_YI-XlwoOIhiP6oLs2mpaqxwruaHJP-vNvY9UN6kVItjpGpsBCh3u0IK/exec";
-
-const ADMIN_PASSWORD = "riceking168";
+const ADMIN_PASSWORD = "1234";
 
 const emptyForm = {
   id: "",
-  name: "",
-  rate: "0",
   category: "",
+  productName: "",
+  emoji: "🎁",
+  rate: "0",
   couponNameCode: "",
   activationType: "same_day" as "same_day" | "next_day" | "fixed_date",
   fixedActivateDate: "",
@@ -32,6 +39,27 @@ const emptyForm = {
   note: "",
   enabled: true,
 };
+
+function toPrizeConfig(item: PrizeItem): PrizeConfig {
+  return {
+    sortOrder: item.sort_order,
+    id: item.id,
+    品項名稱: `${item.category_name ?? ""} ${item.product_name ?? ""}`.trim(),
+    分類: item.category_name ?? "",
+    商品名稱: item.product_name ?? "",
+    emoji: item.emoji ?? "🎁",
+    機率: Number(item.weight ?? 0),
+    couponNameCode: item.coupon_name_code ?? "",
+    啟用方式: (item.activation_type ?? "same_day") as
+      | "same_day"
+      | "next_day"
+      | "fixed_date",
+    指定啟用日: item.fixed_activate_date ?? "",
+    有效月數: Number(item.valid_months ?? 1),
+    備註: item.note ?? "",
+    啟用: Boolean(item.is_active),
+  };
+}
 
 export default function AdminPage() {
   const navigate = useNavigate();
@@ -59,7 +87,13 @@ export default function AdminPage() {
     if (!kw) return items;
 
     return items.filter((item) => {
-      const text = [item.id, item.品項名稱, item.分類, item.couponNameCode]
+      const text = [
+        item.id,
+        item.品項名稱,
+        item.分類,
+        item.商品名稱,
+        item.couponNameCode,
+      ]
         .map((v) => String(v || "").toLowerCase())
         .join(" ");
 
@@ -85,9 +119,10 @@ export default function AdminPage() {
 
     setForm({
       id: String(selectedItem.id || ""),
-      name: String(selectedItem.品項名稱 || ""),
-      rate: String(selectedItem.機率 ?? ""),
       category: String(selectedItem.分類 || ""),
+      productName: String(selectedItem.商品名稱 || ""),
+      emoji: String(selectedItem.emoji || "🎁"),
+      rate: String(selectedItem.機率 ?? "0"),
       couponNameCode: String(selectedItem.couponNameCode || ""),
       activationType:
         (selectedItem.啟用方式 as "same_day" | "next_day" | "fixed_date") ||
@@ -105,15 +140,8 @@ export default function AdminPage() {
   async function fetchPrizeConfigs() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}?action=getPrizeConfigs`);
-      const json = await res.json();
-
-      if (!json.success) {
-        alert(json.message || "讀取失敗");
-        return;
-      }
-
-      setItems(json.data || []);
+      const data = await getAllPrizes(true);
+      setItems(data.map(toPrizeConfig));
     } catch (err) {
       console.error(err);
       alert("讀取獎項設定失敗");
@@ -129,7 +157,6 @@ export default function AdminPage() {
       setPasswordInput("");
       return;
     }
-
     alert("密碼錯誤");
   }
 
@@ -160,8 +187,13 @@ export default function AdminPage() {
   }
 
   function validateForm() {
-    if (!form.name.trim()) {
-      alert("請輸入品項名稱");
+    if (!form.category.trim()) {
+      alert("請輸入分類");
+      return false;
+    }
+
+    if (!form.productName.trim()) {
+      alert("請輸入商品名稱");
       return false;
     }
 
@@ -190,27 +222,21 @@ export default function AdminPage() {
 
     setSaving(true);
     try {
-      const params = new URLSearchParams({
-        action: "createPrizeConfig",
-        name: form.name,
-        rate: String(Number(form.rate)),
-        category: form.category,
-        couponNameCode: form.couponNameCode,
-        activationType: form.activationType,
-        fixedActivateDate:
-          form.activationType === "fixed_date" ? form.fixedActivateDate : "",
-        validMonths: String(Number(form.validMonths)),
+      const sortOrder = items.length ? Math.max(...items.map((i) => Number(i.sortOrder || 0))) + 1 : 1;
+
+      await addPrize({
+        category_name: form.category,
+        product_name: form.productName,
+        emoji: form.emoji || "🎁",
+        weight: Number(form.rate),
+        sort_order: sortOrder,
+        coupon_name_code: form.couponNameCode,
+        activation_type: form.activationType,
+        fixed_activate_date:
+          form.activationType === "fixed_date" ? form.fixedActivateDate : null,
+        valid_months: Number(form.validMonths),
         note: form.note,
-        enabled: String(form.enabled),
       });
-
-      const res = await fetch(`${API_BASE}?${params.toString()}`);
-      const json = await res.json();
-
-      if (!json.success) {
-        alert(json.message || "新增失敗");
-        return;
-      }
 
       alert("新增成功");
       resetEditor();
@@ -224,32 +250,23 @@ export default function AdminPage() {
   }
 
   async function handleSave() {
-    if (!validateForm()) return;
+    if (!validateForm() || !form.id) return;
 
     setSaving(true);
     try {
-      const params = new URLSearchParams({
-        action: "updatePrizeConfig",
-        id: form.id,
-        name: form.name,
-        rate: String(Number(form.rate)),
-        category: form.category,
-        couponNameCode: form.couponNameCode,
-        activationType: form.activationType,
-        fixedActivateDate:
-          form.activationType === "fixed_date" ? form.fixedActivateDate : "",
-        validMonths: String(Number(form.validMonths)),
+      await updatePrize(form.id, {
+        category_name: form.category,
+        product_name: form.productName,
+        emoji: form.emoji || "🎁",
+        weight: Number(form.rate),
+        is_active: form.enabled,
+        coupon_name_code: form.couponNameCode,
+        activation_type: form.activationType,
+        fixed_activate_date:
+          form.activationType === "fixed_date" ? form.fixedActivateDate : null,
+        valid_months: Number(form.validMonths),
         note: form.note,
-        enabled: String(form.enabled),
       });
-
-      const res = await fetch(`${API_BASE}?${params.toString()}`);
-      const json = await res.json();
-
-      if (!json.success) {
-        alert(json.message || "儲存失敗");
-        return;
-      }
 
       alert("更新成功");
       await fetchPrizeConfigs();
@@ -272,19 +289,7 @@ export default function AdminPage() {
 
     setSaving(true);
     try {
-      const params = new URLSearchParams({
-        action: "deletePrizeConfig",
-        id: selectedId,
-      });
-
-      const res = await fetch(`${API_BASE}?${params.toString()}`);
-      const json = await res.json();
-
-      if (!json.success) {
-        alert(json.message || "刪除失敗");
-        return;
-      }
-
+      await deletePrize(selectedId);
       alert("刪除成功");
       resetEditor();
       await fetchPrizeConfigs();
@@ -297,21 +302,24 @@ export default function AdminPage() {
   }
 
   async function handleMove(direction: "up" | "down", id: string) {
+    const currentIndex = items.findIndex((item) => String(item.id) === String(id));
+    if (currentIndex === -1) return;
+
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+
+    const current = items[currentIndex];
+    const target = items[targetIndex];
+
     setSaving(true);
     try {
-      const params = new URLSearchParams({
-        action: "movePrizeConfig",
-        id,
-        direction,
+      await updatePrize(String(current.id), {
+        sort_order: Number(target.sortOrder),
       });
 
-      const res = await fetch(`${API_BASE}?${params.toString()}`);
-      const json = await res.json();
-
-      if (!json.success) {
-        alert(json.message || "排序失敗");
-        return;
-      }
+      await updatePrize(String(target.id), {
+        sort_order: Number(current.sortOrder),
+      });
 
       await fetchPrizeConfigs();
     } catch (err) {
@@ -327,49 +335,57 @@ export default function AdminPage() {
   if (!isUnlocked) {
     return (
       <div style={styles.page}>
-        <div style={styles.card}>
-          <div style={styles.topHeader}>
-            <h1 style={styles.title}>後台管理系統</h1>
+        <div style={styles.topBar} />
+        <div style={styles.shell}>
+          <div style={styles.headerCard}>
+            <div style={styles.headerTop}>
+              <div>
+                <h1 style={styles.brandTitle}>後台管理系統</h1>
+                <div style={styles.brandSub}>獎項管理</div>
+              </div>
 
-            <button
-              type="button"
-              style={styles.secondaryButton}
-              onClick={() => navigate("/")}
-            >
-              返回前台
-            </button>
-          </div>
-
-          <h2 style={styles.sectionTitle}>輸入管理密碼</h2>
-
-          <div style={{ maxWidth: 420 }}>
-            <input
-              type="password"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleUnlock();
-              }}
-              placeholder="請輸入後台密碼"
-              style={styles.input}
-            />
-
-            <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
               <button
                 type="button"
-                style={styles.secondaryButton}
+                style={styles.headerOutlineButton}
                 onClick={() => navigate("/")}
               >
                 返回前台
               </button>
+            </div>
+          </div>
 
-              <button
-                type="button"
-                style={styles.primaryButton}
-                onClick={handleUnlock}
-              >
-                進入後台
-              </button>
+          <div style={styles.card}>
+            <h2 style={styles.sectionTitle}>輸入管理密碼</h2>
+
+            <div style={{ maxWidth: 420 }}>
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleUnlock();
+                }}
+                placeholder="請輸入後台密碼"
+                style={styles.input}
+              />
+
+              <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+                <button
+                  type="button"
+                  style={styles.secondaryButton}
+                  onClick={() => navigate("/")}
+                >
+                  返回前台
+                </button>
+
+                <button
+                  type="button"
+                  style={styles.primaryButton}
+                  onClick={handleUnlock}
+                >
+                  進入後台
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -379,305 +395,361 @@ export default function AdminPage() {
 
   return (
     <div style={styles.page}>
-      <div style={styles.card}>
-        <div style={styles.topHeader}>
-          <h1 style={styles.title}>後台管理系統</h1>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              style={styles.secondaryButton}
-              onClick={() => navigate("/")}
-            >
-              返回前台
-            </button>
-
-            <button
-              type="button"
-              style={styles.secondaryButton}
-              onClick={handleLogout}
-            >
-              登出
-            </button>
-
-            <button
-              type="button"
-              style={styles.addButton}
-              onClick={startCreate}
-            >
-              ＋ 新增品項
-            </button>
-          </div>
-        </div>
-
-        <div style={styles.notice}>
-          目前總機率：<b>{totalRate}%</b>
-          {Math.abs(totalRate - 100) > 0.0001 && (
-            <span style={styles.warn}>（提醒：總和不為 100%，仍可運作）</span>
-          )}
-        </div>
-
-        <h2 style={styles.sectionTitle}>全部品項</h2>
-
-        <div style={styles.searchWrap}>
-          <input
-            style={styles.searchInput}
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="搜尋品項名稱 / 分類 / code / id"
-          />
-        </div>
-
-        {loading ? (
-          <div style={styles.empty}>載入中...</div>
-        ) : filteredItems.length === 0 ? (
-          <div style={styles.empty}>查無符合的品項</div>
-        ) : (
-          <div style={styles.list}>
-            {filteredItems.map((item, index) => {
-              const active =
-                !isCreating && String(item.id) === String(selectedId);
-              const enabled =
-                item.啟用 === true ||
-                String(item.啟用).toLowerCase() === "true" ||
-                String(item.啟用) === "1";
-
-              return (
-                <div
-                  key={item.id}
-                  style={{
-                    ...styles.listItemWrap,
-                    ...(active ? styles.listItemWrapActive : {}),
-                  }}
-                >
-                  <button
-                    type="button"
-                    style={styles.listItemButton}
-                    onClick={() => selectItem(String(item.id))}
-                  >
-                    <div style={styles.itemTopRow}>
-                      <span style={styles.itemName}>
-                        {item.sortOrder}. {item.品項名稱}
-                      </span>
-                      <span style={styles.itemRate}>{item.機率}%</span>
-                    </div>
-
-                    <div style={styles.itemSubRow}>
-                      <span>{item.分類 || "未分類"}</span>
-                      <span>{item.couponNameCode || "-"}</span>
-                    </div>
-
-                    <div style={styles.itemSubRow2}>
-                      <span>ID：{item.id}</span>
-                      <span>{enabled ? "啟用中" : "未啟用"}</span>
-                    </div>
-                  </button>
-
-                  <div style={styles.sortButtons}>
-                    <button
-                      type="button"
-                      style={styles.sortButton}
-                      disabled={saving || index === 0}
-                      onClick={() => handleMove("up", String(item.id))}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      style={styles.sortButton}
-                      disabled={saving || index === filteredItems.length - 1}
-                      onClick={() => handleMove("down", String(item.id))}
-                    >
-                      ↓
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div style={styles.card}>
-        <h2 style={styles.sectionTitle}>{editorTitle}</h2>
-
-        {!isCreating && !selectedId ? (
-          <div style={styles.empty}>請先點擊上方某個品項，或按「新增品項」</div>
-        ) : (
-          <>
-            <div style={styles.formGrid}>
-              {!isCreating && (
-                <Field label="品項 ID">
-                  <input style={styles.inputDisabled} value={form.id} disabled />
-                </Field>
-              )}
-
-              <Field label="品項名稱">
-                <input
-                  style={styles.input}
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, name: e.target.value }))
-                  }
-                />
-              </Field>
-
-              <Field label="機率 (%)">
-                <input
-                  style={styles.input}
-                  type="number"
-                  step="0.1"
-                  value={form.rate}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, rate: e.target.value }))
-                  }
-                />
-              </Field>
-
-              <Field label="分類">
-                <input
-                  style={styles.input}
-                  value={form.category}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, category: e.target.value }))
-                  }
-                />
-              </Field>
-
-              <Field label="couponNameCode">
-                <input
-                  style={styles.input}
-                  value={form.couponNameCode}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, couponNameCode: e.target.value }))
-                  }
-                />
-              </Field>
-
-              <Field label="啟用方式">
-                <select
-                  style={styles.input}
-                  value={form.activationType}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      activationType: e.target.value as
-                        | "same_day"
-                        | "next_day"
-                        | "fixed_date",
-                    }))
-                  }
-                >
-                  <option value="same_day">當天使用</option>
-                  <option value="next_day">隔天使用</option>
-                  <option value="fixed_date">指定日期使用</option>
-                </select>
-              </Field>
-
-              <Field label="指定啟用日">
-                <input
-                  style={{
-                    ...styles.input,
-                    opacity: form.activationType === "fixed_date" ? 1 : 0.55,
-                  }}
-                  type="date"
-                  disabled={form.activationType !== "fixed_date"}
-                  value={form.fixedActivateDate}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      fixedActivateDate: e.target.value,
-                    }))
-                  }
-                />
-              </Field>
-
-              <Field label="有效月數">
-                <select
-                  style={styles.input}
-                  value={form.validMonths}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, validMonths: e.target.value }))
-                  }
-                >
-                  <option value="0">0 個月（當日）</option>
-                  <option value="1">1 個月</option>
-                  <option value="2">2 個月</option>
-                  <option value="3">3 個月</option>
-                  <option value="6">6 個月</option>
-                  <option value="12">12 個月</option>
-                </select>
-              </Field>
-
-              <Field label="是否啟用">
-                <select
-                  style={styles.input}
-                  value={String(form.enabled)}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      enabled: e.target.value === "true",
-                    }))
-                  }
-                >
-                  <option value="true">啟用</option>
-                  <option value="false">停用</option>
-                </select>
-              </Field>
+      <div style={styles.topBar} />
+      <div style={styles.shell}>
+        <div style={styles.headerCard}>
+          <div style={styles.headerTop}>
+            <div>
+              <h1 style={styles.brandTitle}>後台管理系統</h1>
+              <div style={styles.brandSub}>獎項管理</div>
             </div>
 
-            <Field label="備註">
-              <textarea
-                style={styles.textarea}
-                rows={5}
-                value={form.note}
-                onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))}
-                placeholder="例如：限內用、不得與其他優惠併用、僅限平日使用、需提前出示..."
-              />
-            </Field>
-
-            <div style={styles.actionRow}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button
                 type="button"
-                style={styles.secondaryButton}
-                onClick={resetEditor}
-                disabled={saving}
+                style={styles.headerOutlineButton}
+                onClick={() => navigate("/")}
               >
-                返回列表
+                返回前台
               </button>
 
-              {isCreating ? (
+              <button
+                type="button"
+                style={styles.headerSolidButton}
+                onClick={handleLogout}
+              >
+                登出
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style={styles.cardWarm}>
+          <div style={styles.cardWarmHeader}>
+            <span>🎯 獎項管理</span>
+            <span style={styles.rateInfo}>啟用中總機率：{totalRate}%</span>
+          </div>
+
+          <div style={styles.cardWarmBody}>
+            <div style={styles.noticeBox}>
+              提醒：建議啟用中的獎項總機率加總為 100%。
+            </div>
+
+            <div style={styles.createRow}>
+              <input
+                style={styles.compactInput}
+                value={form.category}
+                onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
+                placeholder="類別"
+              />
+              <input
+                style={styles.compactInput}
+                value={form.productName}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, productName: e.target.value }))
+                }
+                placeholder="商品名稱"
+              />
+              <input
+                style={styles.compactInput}
+                value={form.emoji}
+                onChange={(e) => setForm((p) => ({ ...p, emoji: e.target.value }))}
+                placeholder="emoji"
+              />
+              <input
+                style={styles.compactInput}
+                type="number"
+                step="0.1"
+                value={form.rate}
+                onChange={(e) => setForm((p) => ({ ...p, rate: e.target.value }))}
+                placeholder="0"
+              />
+              <button
+                type="button"
+                style={styles.headerSolidButton}
+                onClick={startCreate}
+              >
+                新增品項
+              </button>
+            </div>
+
+            <div style={styles.helperText}>
+              類別與商品名稱分開管理，前台會自動顯示合成名稱；機率請直接輸入數字百分比。
+            </div>
+
+            <h2 style={styles.sectionTitle}>全部品項</h2>
+
+            <div style={styles.searchWrap}>
+              <input
+                style={styles.searchInput}
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                placeholder="搜尋品項名稱 / 分類 / code / id"
+              />
+            </div>
+
+            {loading ? (
+              <div style={styles.empty}>載入中...</div>
+            ) : filteredItems.length === 0 ? (
+              <div style={styles.empty}>查無符合的品項</div>
+            ) : (
+              <div style={styles.list}>
+                {filteredItems.map((item, index) => {
+                  const active =
+                    !isCreating && String(item.id) === String(selectedId);
+                  const enabled =
+                    item.啟用 === true ||
+                    String(item.啟用).toLowerCase() === "true" ||
+                    String(item.啟用) === "1";
+
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        ...styles.listItemWrapWarm,
+                        ...(active ? styles.listItemWrapActive : {}),
+                      }}
+                    >
+                      <button
+                        type="button"
+                        style={styles.listItemButton}
+                        onClick={() => selectItem(String(item.id))}
+                      >
+                        <div style={styles.itemTopRow}>
+                          <span style={styles.itemName}>
+                            {item.sortOrder}. {item.品項名稱}
+                          </span>
+                          <span style={styles.itemRate}>{item.機率}%</span>
+                        </div>
+
+                        <div style={styles.itemSubRow}>
+                          <span>{item.分類 || "未分類"}</span>
+                          <span>{item.couponNameCode || "-"}</span>
+                        </div>
+
+                        <div style={styles.itemSubRow2}>
+                          <span>ID：{item.id}</span>
+                          <span>{enabled ? "啟用中" : "未啟用"}</span>
+                        </div>
+                      </button>
+
+                      <div style={styles.sortButtons}>
+                        <button
+                          type="button"
+                          style={styles.sortButton}
+                          disabled={saving || index === 0}
+                          onClick={() => handleMove("up", String(item.id))}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.sortButton}
+                          disabled={saving || index === filteredItems.length - 1}
+                          onClick={() => handleMove("down", String(item.id))}
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={styles.card}>
+          <h2 style={styles.sectionTitle}>{editorTitle}</h2>
+
+          {!isCreating && !selectedId ? (
+            <div style={styles.empty}>請先點擊上方某個品項，或按「新增品項」</div>
+          ) : (
+            <>
+              <div style={styles.formGrid}>
+                {!isCreating && (
+                  <Field label="品項 ID">
+                    <input style={styles.inputDisabled} value={form.id} disabled />
+                  </Field>
+                )}
+
+                <Field label="分類">
+                  <input
+                    style={styles.input}
+                    value={form.category}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, category: e.target.value }))
+                    }
+                  />
+                </Field>
+
+                <Field label="商品名稱">
+                  <input
+                    style={styles.input}
+                    value={form.productName}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, productName: e.target.value }))
+                    }
+                  />
+                </Field>
+
+                <Field label="emoji">
+                  <input
+                    style={styles.input}
+                    value={form.emoji}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, emoji: e.target.value }))
+                    }
+                  />
+                </Field>
+
+                <Field label="機率 (%)">
+                  <input
+                    style={styles.input}
+                    type="number"
+                    step="0.1"
+                    value={form.rate}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, rate: e.target.value }))
+                    }
+                  />
+                </Field>
+
+                <Field label="couponNameCode">
+                  <input
+                    style={styles.input}
+                    value={form.couponNameCode}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, couponNameCode: e.target.value }))
+                    }
+                  />
+                </Field>
+
+                <Field label="啟用方式">
+                  <select
+                    style={styles.input}
+                    value={form.activationType}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        activationType: e.target.value as
+                          | "same_day"
+                          | "next_day"
+                          | "fixed_date",
+                      }))
+                    }
+                  >
+                    <option value="same_day">當天使用</option>
+                    <option value="next_day">隔天使用</option>
+                    <option value="fixed_date">指定日期使用</option>
+                  </select>
+                </Field>
+
+                <Field label="指定啟用日">
+                  <input
+                    style={{
+                      ...styles.input,
+                      opacity: form.activationType === "fixed_date" ? 1 : 0.55,
+                    }}
+                    type="date"
+                    disabled={form.activationType !== "fixed_date"}
+                    value={form.fixedActivateDate}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        fixedActivateDate: e.target.value,
+                      }))
+                    }
+                  />
+                </Field>
+
+                <Field label="有效月數">
+                  <select
+                    style={styles.input}
+                    value={form.validMonths}
+                    onChange={(e) =>
+                      setForm((p) => ({ ...p, validMonths: e.target.value }))
+                    }
+                  >
+                    <option value="0">0 個月（當日）</option>
+                    <option value="1">1 個月</option>
+                    <option value="2">2 個月</option>
+                    <option value="3">3 個月</option>
+                    <option value="6">6 個月</option>
+                    <option value="12">12 個月</option>
+                  </select>
+                </Field>
+
+                <Field label="是否啟用">
+                  <select
+                    style={styles.input}
+                    value={String(form.enabled)}
+                    onChange={(e) =>
+                      setForm((p) => ({
+                        ...p,
+                        enabled: e.target.value === "true",
+                      }))
+                    }
+                  >
+                    <option value="true">啟用</option>
+                    <option value="false">停用</option>
+                  </select>
+                </Field>
+              </div>
+
+              <Field label="備註">
+                <textarea
+                  style={styles.textarea}
+                  rows={5}
+                  value={form.note}
+                  onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))}
+                  placeholder="例如：限內用、不得與其他優惠併用、僅限平日使用、需提前出示..."
+                />
+              </Field>
+
+              <div style={styles.actionRow}>
                 <button
                   type="button"
-                  style={styles.primaryButton}
-                  onClick={handleCreate}
+                  style={styles.secondaryButton}
+                  onClick={resetEditor}
                   disabled={saving}
                 >
-                  {saving ? "新增中..." : "新增品項"}
+                  返回列表
                 </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    style={styles.dangerButton}
-                    onClick={handleDelete}
-                    disabled={saving}
-                  >
-                    {saving ? "處理中..." : "刪除品項"}
-                  </button>
+
+                {isCreating ? (
                   <button
                     type="button"
                     style={styles.primaryButton}
-                    onClick={handleSave}
+                    onClick={handleCreate}
                     disabled={saving}
                   >
-                    {saving ? "儲存中..." : "儲存設定"}
+                    {saving ? "新增中..." : "新增品項"}
                   </button>
-                </>
-              )}
-            </div>
-          </>
-        )}
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      style={styles.dangerButton}
+                      onClick={handleDelete}
+                      disabled={saving}
+                    >
+                      {saving ? "處理中..." : "刪除品項"}
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.primaryButton}
+                      onClick={handleSave}
+                      disabled={saving}
+                    >
+                      {saving ? "儲存中..." : "儲存設定"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -713,16 +785,105 @@ function normalizeDateInput(v: string) {
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
-    background: "#f5f6f8",
-    padding: "20px 14px 40px",
+    background: "#f6f1e7",
+  },
+  topBar: {
+    width: "100%",
+    height: 10,
+    background:
+      "linear-gradient(90deg, #d46b2c 0%, #c43f1e 40%, #d7a328 100%)",
+  },
+  shell: {
+    maxWidth: 1100,
+    margin: "0 auto",
+    padding: "22px 16px 40px",
+  },
+  headerCard: {
+    background: "#fff",
+    borderBottom: "1px solid #edd7cf",
+    padding: "18px 24px",
+    marginBottom: 18,
+    borderRadius: 18,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
+  },
+  headerTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  brandTitle: {
+    margin: 0,
+    fontSize: 26,
+    fontWeight: 800,
+    color: "#c43f1e",
+  },
+  brandSub: {
+    marginTop: 4,
+    color: "#8c7a71",
+    fontSize: 14,
+  },
+  cardWarm: {
+    background: "#f8f2ef",
+    borderRadius: 20,
+    overflow: "hidden",
+    border: "1px solid #ead5ca",
+    marginBottom: 18,
+  },
+  cardWarmHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+    padding: "16px 18px",
+    color: "#d1421f",
+    fontSize: 24,
+    fontWeight: 800,
+    borderBottom: "1px solid #ead5ca",
+  },
+  rateInfo: {
+    fontSize: 14,
+    fontWeight: 700,
+  },
+  cardWarmBody: {
+    padding: 18,
+  },
+  noticeBox: {
+    border: "1px solid #f0b67f",
+    borderRadius: 16,
+    padding: "14px 16px",
+    background: "#fffaf4",
+    color: "#9a5b2b",
+    marginBottom: 18,
+  },
+  createRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr 1fr auto",
+    gap: 12,
+    marginBottom: 14,
+  },
+  compactInput: {
+    minHeight: 48,
+    borderRadius: 14,
+    border: "1px solid #ead5ca",
+    background: "#f3efe6",
+    padding: "0 14px",
+    fontSize: 16,
+    boxSizing: "border-box",
+  },
+  helperText: {
+    fontSize: 13,
+    color: "#a1948e",
+    marginBottom: 16,
   },
   card: {
-    maxWidth: 920,
-    margin: "0 auto 18px",
     background: "#fff",
     borderRadius: 18,
     padding: 18,
     boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
+    marginBottom: 18,
   },
   topHeader: {
     display: "flex",
@@ -738,11 +899,33 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
   },
   addButton: {
-    minHeight: 44,
-    padding: "0 16px",
-    borderRadius: 12,
+    minHeight: 48,
+    padding: "0 18px",
+    borderRadius: 14,
     border: "none",
-    background: "#111",
+    background: "#2e2e34",
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  headerOutlineButton: {
+    minHeight: 42,
+    padding: "0 16px",
+    borderRadius: 14,
+    border: "1px solid #ebc9bb",
+    background: "#fff7f3",
+    color: "#c43f1e",
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  headerSolidButton: {
+    minHeight: 42,
+    padding: "0 16px",
+    borderRadius: 14,
+    border: "none",
+    background: "#d1421f",
     color: "#fff",
     fontSize: 15,
     fontWeight: 700,
@@ -750,8 +933,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sectionTitle: {
     margin: "0 0 14px",
-    fontSize: 20,
-    fontWeight: 700,
+    fontSize: 22,
+    fontWeight: 800,
+    color: "#3d3330",
   },
   notice: {
     marginBottom: 16,
@@ -770,9 +954,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   searchInput: {
     width: "100%",
-    minHeight: 46,
-    borderRadius: 12,
-    border: "1px solid #ddd",
+    minHeight: 50,
+    borderRadius: 16,
+    border: "1px solid #ead5ca",
     padding: "0 14px",
     fontSize: 15,
     background: "#fff",
@@ -780,49 +964,49 @@ const styles: Record<string, React.CSSProperties> = {
   },
   empty: {
     padding: "24px 12px",
-    textAlign: "center" as const,
+    textAlign: "center",
     color: "#666",
     background: "#fafafa",
     borderRadius: 12,
   },
   list: {
     display: "grid",
-    gap: 10,
+    gap: 14,
   },
-  listItemWrap: {
+  listItemWrapWarm: {
     display: "flex",
     gap: 10,
     alignItems: "stretch",
-    border: "1px solid #e6e6e6",
-    borderRadius: 14,
-    background: "#fff",
+    border: "1px solid #ecdac7",
+    borderRadius: 18,
+    background: "#fbf7ef",
     overflow: "hidden",
   },
   listItemWrapActive: {
-    border: "1px solid #111",
-    background: "#f9f9f9",
+    border: "1px solid #d46b2c",
+    background: "#fffaf5",
   },
   listItemButton: {
     flex: 1,
     border: "none",
     background: "transparent",
-    textAlign: "left" as const,
-    padding: 14,
+    textAlign: "left",
+    padding: 16,
     cursor: "pointer",
   },
   sortButtons: {
     display: "flex",
-    flexDirection: "column" as const,
+    flexDirection: "column",
     justifyContent: "center",
-    gap: 6,
-    padding: 10,
-    borderLeft: "1px solid #eee",
-    background: "#fafafa",
+    gap: 8,
+    padding: 12,
+    borderLeft: "1px solid #eee3d7",
+    background: "#f7f2ea",
   },
   sortButton: {
-    width: 40,
-    height: 36,
-    borderRadius: 10,
+    width: 42,
+    height: 38,
+    borderRadius: 12,
     border: "1px solid #ddd",
     background: "#fff",
     cursor: "pointer",
@@ -834,28 +1018,30 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     alignItems: "center",
     gap: 12,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   itemSubRow: {
     display: "flex",
     justifyContent: "space-between",
-    color: "#666",
-    fontSize: 13,
-    marginBottom: 4,
+    color: "#76675e",
+    fontSize: 14,
+    marginBottom: 6,
   },
   itemSubRow2: {
     display: "flex",
     justifyContent: "space-between",
-    color: "#888",
+    color: "#9a8f87",
     fontSize: 12,
   },
   itemName: {
-    fontSize: 16,
-    fontWeight: 700,
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#2f2826",
   },
   itemRate: {
-    fontSize: 15,
-    fontWeight: 700,
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#9d6a2d",
   },
   formGrid: {
     display: "grid",
@@ -869,11 +1055,12 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 8,
     fontSize: 14,
     fontWeight: 700,
+    color: "#544843",
   },
   input: {
     width: "100%",
-    minHeight: 46,
-    borderRadius: 12,
+    minHeight: 48,
+    borderRadius: 14,
     border: "1px solid #ddd",
     padding: "0 12px",
     fontSize: 15,
@@ -882,8 +1069,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   inputDisabled: {
     width: "100%",
-    minHeight: 46,
-    borderRadius: 12,
+    minHeight: 48,
+    borderRadius: 14,
     border: "1px solid #e2e2e2",
     padding: "0 12px",
     fontSize: 15,
@@ -893,11 +1080,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   textarea: {
     width: "100%",
-    borderRadius: 12,
+    borderRadius: 14,
     border: "1px solid #ddd",
     padding: 12,
     fontSize: 15,
-    resize: "vertical" as const,
+    resize: "vertical",
     background: "#fff",
     boxSizing: "border-box",
   },
@@ -906,7 +1093,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     gap: 12,
     marginTop: 18,
-    flexWrap: "wrap" as const,
+    flexWrap: "wrap",
   },
   primaryButton: {
     flex: 1,
