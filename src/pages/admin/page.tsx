@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 type PrizeConfig = {
   sortOrder: number | string;
@@ -30,6 +31,7 @@ const emptyForm = {
 };
 
 export default function AdminPage() {
+  const navigate = useNavigate();
   const [items, setItems] = useState<PrizeConfig[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [keyword, setKeyword] = useState("");
@@ -299,12 +301,27 @@ export default function AdminPage() {
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-        <div style={styles.topHeader}>
-          <h1 style={styles.title}>後台管理系統</h1>
-          <button style={styles.addButton} onClick={startCreate}>
+       <div style={styles.topHeader}>
+        <h1 style={styles.title}>後台管理系統</h1>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            style={styles.secondaryButton}
+            onClick={() => navigate("/")}
+           >
+            返回前台
+          </button>
+
+          <button
+            type="button"
+            style={styles.addButton}
+            onClick={startCreate}
+          >
             ＋ 新增品項
           </button>
         </div>
+      </div>
 
         <div style={styles.notice}>
           目前總機率：<b>{totalRate}%</b>
