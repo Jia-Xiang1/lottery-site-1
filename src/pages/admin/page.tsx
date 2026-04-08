@@ -15,8 +15,11 @@ type PrizeConfig = {
   啟用: boolean | string;
 };
 
-const API_BASE = "https://script.google.com/macros/s/AKfycbwqNjpZqi4i_YI-XlwoOIhiP6oLs2mpaqxwruaHJP-vNvY9UN6kVItjpGpsBCh3u0IK/exec";
+const API_BASE =
+  "https://script.google.com/macros/s/AKfycbwqNjpZqi4i_YI-XlwoOIhiP6oLs2mpaqxwruaHJP-vNvY9UN6kVItjpGpsBCh3u0IK/exec";
+
 const ADMIN_PASSWORD = "riceking168";
+
 const emptyForm = {
   id: "",
   name: "",
@@ -32,8 +35,12 @@ const emptyForm = {
 
 export default function AdminPage() {
   const navigate = useNavigate();
+
   const [passwordInput, setPasswordInput] = useState("");
-  const [isUnlocked, setIsUnlocked] = useState(sessionStorage.getItem("admin_unlocked") === "true");
+  const [isUnlocked, setIsUnlocked] = useState(
+    sessionStorage.getItem("admin_unlocked") === "true"
+  );
+
   const [items, setItems] = useState<PrizeConfig[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [keyword, setKeyword] = useState("");
@@ -52,12 +59,7 @@ export default function AdminPage() {
     if (!kw) return items;
 
     return items.filter((item) => {
-      const text = [
-        item.id,
-        item.品項名稱,
-        item.分類,
-        item.couponNameCode,
-      ]
+      const text = [item.id, item.品項名稱, item.分類, item.couponNameCode]
         .map((v) => String(v || "").toLowerCase())
         .join(" ");
 
@@ -73,8 +75,10 @@ export default function AdminPage() {
   }, [items]);
 
   useEffect(() => {
-    fetchPrizeConfigs();
-  }, []);
+    if (isUnlocked) {
+      fetchPrizeConfigs();
+    }
+  }, [isUnlocked]);
 
   useEffect(() => {
     if (!selectedItem || isCreating) return;
@@ -118,6 +122,26 @@ export default function AdminPage() {
     }
   }
 
+  function handleUnlock() {
+    if (passwordInput === ADMIN_PASSWORD) {
+      sessionStorage.setItem("admin_unlocked", "true");
+      setIsUnlocked(true);
+      setPasswordInput("");
+      return;
+    }
+
+    alert("密碼錯誤");
+  }
+
+  function handleLogout() {
+    sessionStorage.removeItem("admin_unlocked");
+    setIsUnlocked(false);
+    setPasswordInput("");
+    setSelectedId("");
+    setIsCreating(false);
+    setForm(emptyForm);
+  }
+
   function startCreate() {
     setIsCreating(true);
     setSelectedId("");
@@ -133,17 +157,6 @@ export default function AdminPage() {
     setIsCreating(false);
     setSelectedId("");
     setForm(emptyForm);
-  }
-
-  function handleUnlock() {
-  if (passwordInput === ADMIN_PASSWORD) {
-    sessionStorage.setItem("admin_unlocked", "true");
-    setIsUnlocked(true);
-    setPasswordInput("");
-    return;
-  }
-
-  alert("密碼錯誤");
   }
 
   function validateForm() {
@@ -311,37 +324,66 @@ export default function AdminPage() {
 
   const editorTitle = isCreating ? "新增品項" : "品項詳細設定";
 
-if (!isUnlocked) {
+  if (!isUnlocked) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.card}>
+          <div style={styles.topHeader}>
+            <h1 style={styles.title}>後台管理系統</h1>
+
+            <button
+              type="button"
+              style={styles.secondaryButton}
+              onClick={() => navigate("/")}
+            >
+              返回前台
+            </button>
+          </div>
+
+          <h2 style={styles.sectionTitle}>輸入管理密碼</h2>
+
+          <div style={{ maxWidth: 420 }}>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleUnlock();
+              }}
+              placeholder="請輸入後台密碼"
+              style={styles.input}
+            />
+
+            <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+              <button
+                type="button"
+                style={styles.secondaryButton}
+                onClick={() => navigate("/")}
+              >
+                返回前台
+              </button>
+
+              <button
+                type="button"
+                style={styles.primaryButton}
+                onClick={handleUnlock}
+              >
+                進入後台
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={styles.page}>
       <div style={styles.card}>
         <div style={styles.topHeader}>
           <h1 style={styles.title}>後台管理系統</h1>
 
-          <button
-            type="button"
-            style={styles.secondaryButton}
-            onClick={() => navigate("/")}
-          >
-            返回前台
-          </button>
-        </div>
-
-        <h2 style={styles.sectionTitle}>輸入管理密碼</h2>
-
-        <div style={{ maxWidth: 420 }}>
-          <input
-            type="password"
-            value={passwordInput}
-            onChange={(e) => setPasswordInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleUnlock();
-            }}
-            placeholder="請輸入後台密碼"
-            style={styles.input}
-          />
-
-          <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               type="button"
               style={styles.secondaryButton}
@@ -352,17 +394,21 @@ if (!isUnlocked) {
 
             <button
               type="button"
-              style={styles.primaryButton}
-              onClick={handleUnlock}
+              style={styles.secondaryButton}
+              onClick={handleLogout}
             >
-              進入後台
+              登出
+            </button>
+
+            <button
+              type="button"
+              style={styles.addButton}
+              onClick={startCreate}
+            >
+              ＋ 新增品項
             </button>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
 
         <div style={styles.notice}>
           目前總機率：<b>{totalRate}%</b>
@@ -389,7 +435,8 @@ if (!isUnlocked) {
         ) : (
           <div style={styles.list}>
             {filteredItems.map((item, index) => {
-              const active = !isCreating && String(item.id) === String(selectedId);
+              const active =
+                !isCreating && String(item.id) === String(selectedId);
               const enabled =
                 item.啟用 === true ||
                 String(item.啟用).toLowerCase() === "true" ||
@@ -404,6 +451,7 @@ if (!isUnlocked) {
                   }}
                 >
                   <button
+                    type="button"
                     style={styles.listItemButton}
                     onClick={() => selectItem(String(item.id))}
                   >
@@ -427,6 +475,7 @@ if (!isUnlocked) {
 
                   <div style={styles.sortButtons}>
                     <button
+                      type="button"
                       style={styles.sortButton}
                       disabled={saving || index === 0}
                       onClick={() => handleMove("up", String(item.id))}
@@ -434,6 +483,7 @@ if (!isUnlocked) {
                       ↑
                     </button>
                     <button
+                      type="button"
                       style={styles.sortButton}
                       disabled={saving || index === filteredItems.length - 1}
                       onClick={() => handleMove("down", String(item.id))}
@@ -466,7 +516,9 @@ if (!isUnlocked) {
                 <input
                   style={styles.input}
                   value={form.name}
-                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, name: e.target.value }))
+                  }
                 />
               </Field>
 
@@ -476,7 +528,9 @@ if (!isUnlocked) {
                   type="number"
                   step="0.1"
                   value={form.rate}
-                  onChange={(e) => setForm((p) => ({ ...p, rate: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, rate: e.target.value }))
+                  }
                 />
               </Field>
 
@@ -484,7 +538,9 @@ if (!isUnlocked) {
                 <input
                   style={styles.input}
                   value={form.category}
-                  onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, category: e.target.value }))
+                  }
                 />
               </Field>
 
@@ -582,6 +638,7 @@ if (!isUnlocked) {
 
             <div style={styles.actionRow}>
               <button
+                type="button"
                 style={styles.secondaryButton}
                 onClick={resetEditor}
                 disabled={saving}
@@ -591,6 +648,7 @@ if (!isUnlocked) {
 
               {isCreating ? (
                 <button
+                  type="button"
                   style={styles.primaryButton}
                   onClick={handleCreate}
                   disabled={saving}
@@ -600,6 +658,7 @@ if (!isUnlocked) {
               ) : (
                 <>
                   <button
+                    type="button"
                     style={styles.dangerButton}
                     onClick={handleDelete}
                     disabled={saving}
@@ -607,6 +666,7 @@ if (!isUnlocked) {
                     {saving ? "處理中..." : "刪除品項"}
                   </button>
                   <button
+                    type="button"
                     style={styles.primaryButton}
                     onClick={handleSave}
                     disabled={saving}
@@ -720,7 +780,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   empty: {
     padding: "24px 12px",
-    textAlign: "center",
+    textAlign: "center" as const,
     color: "#666",
     background: "#fafafa",
     borderRadius: 12,
@@ -746,13 +806,13 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     border: "none",
     background: "transparent",
-    textAlign: "left",
+    textAlign: "left" as const,
     padding: 14,
     cursor: "pointer",
   },
   sortButtons: {
     display: "flex",
-    flexDirection: "column",
+    flexDirection: "column" as const,
     justifyContent: "center",
     gap: 6,
     padding: 10,
@@ -837,7 +897,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #ddd",
     padding: 12,
     fontSize: 15,
-    resize: "vertical",
+    resize: "vertical" as const,
     background: "#fff",
     boxSizing: "border-box",
   },
@@ -846,7 +906,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     gap: 12,
     marginTop: 18,
-    flexWrap: "wrap",
+    flexWrap: "wrap" as const,
   },
   primaryButton: {
     flex: 1,
