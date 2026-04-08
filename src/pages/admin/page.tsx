@@ -23,7 +23,7 @@ type PrizeConfig = {
   啟用: boolean | string;
 };
 
-const ADMIN_PASSWORD = "1234";
+const ADMIN_PASSWORDS = ["riceking168", "xiang1224"];
 
 const emptyForm = {
   id: "",
@@ -72,6 +72,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [showCreateBox, setShowCreateBox] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
   const selectedItem = useMemo(
@@ -141,7 +142,7 @@ export default function AdminPage() {
   }
 
   function handleUnlock() {
-    if (passwordInput === ADMIN_PASSWORD) {
+    if (ADMIN_PASSWORDS.includes(passwordInput)) {
       sessionStorage.setItem("admin_unlocked", "true");
       setIsUnlocked(true);
       setPasswordInput("");
@@ -156,10 +157,12 @@ export default function AdminPage() {
     setPasswordInput("");
     setSelectedId("");
     setIsCreating(false);
+    setShowCreateBox(false);
     setForm(emptyForm);
   }
 
   function startCreate() {
+    setShowCreateBox(true);
     setIsCreating(true);
     setSelectedId("");
     setForm(emptyForm);
@@ -235,6 +238,7 @@ export default function AdminPage() {
 
       alert("新增成功");
       resetEditor();
+      setShowCreateBox(false);
       await fetchPrizeConfigs();
     } catch (err) {
       console.error(err);
@@ -331,9 +335,8 @@ export default function AdminPage() {
         <div style={styles.shell}>
           <div style={styles.headerCard}>
             <div style={styles.headerTop}>
-              <div>
+              <div style={styles.headerTitleRow}>
                 <h1 style={styles.brandTitle}>後台管理系統</h1>
-                <div style={styles.brandSub}>獎項管理</div>
               </div>
 
               <button
@@ -391,9 +394,8 @@ export default function AdminPage() {
       <div style={styles.shell}>
         <div style={styles.headerCard}>
           <div style={styles.headerTop}>
-            <div>
+            <div style={styles.headerTitleRow}>
               <h1 style={styles.brandTitle}>後台管理系統</h1>
-              <div style={styles.brandSub}>獎項管理</div>
             </div>
 
             <div style={styles.headerButtonGroup}>
@@ -428,71 +430,93 @@ export default function AdminPage() {
             </div>
 
             <div style={styles.createBox}>
-              <div style={styles.createBoxTitle}>新增品項</div>
-
-              <div style={styles.createGrid}>
-                <div style={styles.createField}>
-                  <div style={styles.createLabel}>分類</div>
-                  <input
-                    style={styles.compactInput}
-                    value={form.category}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, category: e.target.value }))
-                    }
-                    placeholder="例如：甜點"
-                  />
-                </div>
-
-                <div style={styles.createField}>
-                  <div style={styles.createLabel}>商品名稱</div>
-                  <input
-                    style={styles.compactInput}
-                    value={form.productName}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, productName: e.target.value }))
-                    }
-                    placeholder="例如：手作布丁乙份"
-                  />
-                </div>
-
-                <div style={styles.createField}>
-                  <div style={styles.createLabel}>emoji</div>
-                  <input
-                    style={styles.compactInput}
-                    value={form.emoji}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, emoji: e.target.value }))
-                    }
-                    placeholder="🎁"
-                  />
-                </div>
-
-                <div style={styles.createField}>
-                  <div style={styles.createLabel}>機率 (%)</div>
-                  <input
-                    style={styles.compactInput}
-                    type="number"
-                    step="0.1"
-                    value={form.rate}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, rate: e.target.value }))
-                    }
-                    placeholder="例如：10"
-                  />
-                </div>
-              </div>
-
-              <div style={styles.helperText}>
-                類別與商品名稱分開管理，前台會自動顯示合成名稱；機率請直接輸入百分比數字。
-              </div>
-
               <button
                 type="button"
-                style={styles.fullPrimaryButton}
-                onClick={startCreate}
+                style={styles.createToggleButton}
+                onClick={() => {
+                  if (showCreateBox) {
+                    if (isCreating) {
+                      setIsCreating(false);
+                      setForm(emptyForm);
+                    }
+                    setShowCreateBox(false);
+                  } else {
+                    setShowCreateBox(true);
+                  }
+                }}
               >
-                新增品項
+                {showCreateBox ? "－收合新增品項" : "＋展開新增品項"}
               </button>
+
+              {showCreateBox && (
+                <>
+                  <div style={styles.createBoxTitle}>新增品項</div>
+
+                  <div style={styles.createGrid}>
+                    <div style={styles.createField}>
+                      <div style={styles.createLabel}>分類</div>
+                      <input
+                        style={styles.compactInput}
+                        value={form.category}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, category: e.target.value }))
+                        }
+                        placeholder="例如：甜點"
+                      />
+                    </div>
+
+                    <div style={styles.createField}>
+                      <div style={styles.createLabel}>商品名稱</div>
+                      <input
+                        style={styles.compactInput}
+                        value={form.productName}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, productName: e.target.value }))
+                        }
+                        placeholder="例如：手作布丁乙份"
+                      />
+                    </div>
+
+                    <div style={styles.createField}>
+                      <div style={styles.createLabel}>emoji</div>
+                      <input
+                        style={styles.compactInput}
+                        value={form.emoji}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, emoji: e.target.value }))
+                        }
+                        placeholder="🎁"
+                      />
+                    </div>
+
+                    <div style={styles.createField}>
+                      <div style={styles.createLabel}>機率 (%)</div>
+                      <input
+                        style={styles.compactInput}
+                        type="number"
+                        step="0.1"
+                        value={form.rate}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, rate: e.target.value }))
+                        }
+                        placeholder="例如：10"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={styles.helperText}>
+                    類別與商品名稱分開管理，前台會自動顯示合成名稱；機率請直接輸入百分比數字。
+                  </div>
+
+                  <button
+                    type="button"
+                    style={styles.fullPrimaryButton}
+                    onClick={startCreate}
+                  >
+                    新增品項
+                  </button>
+                </>
+              )}
             </div>
 
             {isCreating && (
@@ -709,6 +733,7 @@ function EditorForm({
           <input
             style={{
               ...styles.input,
+              ...styles.dateInput,
               opacity: form.activationType === "fixed_date" ? 1 : 0.55,
             }}
             type="date"
@@ -858,13 +883,13 @@ const styles: Record<string, React.CSSProperties> = {
   shell: {
     maxWidth: 980,
     margin: "0 auto",
-    padding: "16px 12px 32px",
+    padding: "10px 10px 24px",
   },
   headerCard: {
     background: "#fff",
     borderBottom: "1px solid #edd7cf",
-    padding: "18px 18px",
-    marginBottom: 16,
+    padding: "12px 16px",
+    marginBottom: 14,
     borderRadius: 18,
     boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
   },
@@ -872,27 +897,28 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
-    flexWrap: "wrap",
+    gap: 10,
+    flexWrap: "nowrap",
+  },
+  headerTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    minHeight: 44,
   },
   headerButtonGroup: {
     display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-    width: "100%",
+    gap: 8,
+    flexWrap: "nowrap",
     justifyContent: "flex-end",
+    flexShrink: 0,
   },
   brandTitle: {
     margin: 0,
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: 800,
     color: "#c43f1e",
-    lineHeight: 1.2,
-  },
-  brandSub: {
-    marginTop: 4,
-    color: "#8c7a71",
-    fontSize: 14,
+    lineHeight: 1,
+    whiteSpace: "nowrap",
   },
   cardWarm: {
     background: "#f8f2ef",
@@ -936,6 +962,18 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 18,
     padding: 14,
     marginBottom: 16,
+  },
+  createToggleButton: {
+    width: "100%",
+    minHeight: 46,
+    border: "1px solid #ebc9bb",
+    borderRadius: 14,
+    background: "#fff",
+    color: "#c43f1e",
+    fontSize: 15,
+    fontWeight: 800,
+    cursor: "pointer",
+    marginBottom: 12,
   },
   createBoxTitle: {
     fontSize: 18,
@@ -1150,6 +1188,13 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#fff",
     boxSizing: "border-box",
   },
+  dateInput: {
+    appearance: "none",
+    WebkitAppearance: "none",
+    minHeight: 48,
+    lineHeight: "48px",
+    paddingRight: 12,
+  },
   textarea: {
     width: "100%",
     borderRadius: 14,
@@ -1200,24 +1245,24 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
   },
   headerOutlineButton: {
-    minHeight: 44,
-    padding: "0 16px",
-    borderRadius: 14,
+    minHeight: 40,
+    padding: "0 14px",
+    borderRadius: 12,
     border: "1px solid #ebc9bb",
     background: "#fff7f3",
     color: "#c43f1e",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 700,
     cursor: "pointer",
   },
   headerSolidButton: {
-    minHeight: 44,
-    padding: "0 16px",
-    borderRadius: 14,
+    minHeight: 40,
+    padding: "0 14px",
+    borderRadius: 12,
     border: "none",
     background: "#d1421f",
     color: "#fff",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 700,
     cursor: "pointer",
   },
