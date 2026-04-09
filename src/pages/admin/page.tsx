@@ -16,6 +16,7 @@ type PrizeConfig = {
   商品名稱: string;
   emoji: string;
   機率: number | string;
+  couponNameCode: string;
   啟用方式: "same_day" | "next_day" | "fixed_date";
   指定啟用日: string;
   有效月數: number | string;
@@ -31,6 +32,7 @@ const emptyForm = {
   productName: "",
   emoji: "🎁",
   rate: "0",
+  couponNameCode: "",
   activationType: "same_day" as "same_day" | "next_day" | "fixed_date",
   fixedActivateDate: "",
   validMonths: "1",
@@ -47,6 +49,7 @@ function toPrizeConfig(item: PrizeItem): PrizeConfig {
     商品名稱: item.product_name ?? "",
     emoji: item.emoji ?? "🎁",
     機率: Number(item.weight ?? 0),
+    couponNameCode: item.coupon_name_code ?? "",
     啟用方式: (item.activation_type ?? "same_day") as
       | "same_day"
       | "next_day"
@@ -85,7 +88,7 @@ export default function AdminPage() {
     if (!kw) return items;
 
     return items.filter((item) => {
-      const text = [item.品項名稱, item.分類, item.商品名稱]
+      const text = [item.品項名稱, item.分類, item.商品名稱, item.couponNameCode]
         .map((v) => String(v || "").toLowerCase())
         .join(" ");
 
@@ -115,6 +118,7 @@ export default function AdminPage() {
       productName: String(selectedItem.商品名稱 || ""),
       emoji: String(selectedItem.emoji || "🎁"),
       rate: String(selectedItem.機率 ?? "0"),
+      couponNameCode: String(selectedItem.couponNameCode || ""),
       activationType:
         (selectedItem.啟用方式 as "same_day" | "next_day" | "fixed_date") ||
         "same_day",
@@ -161,7 +165,7 @@ export default function AdminPage() {
     setForm(emptyForm);
   }
 
-  function startCreate() {
+  function openCreateEditor() {
     setShowCreateBox(true);
     setIsCreating(true);
     setSelectedId("");
@@ -173,6 +177,7 @@ export default function AdminPage() {
       setSelectedId("");
       return;
     }
+    setShowCreateBox(false);
     setIsCreating(false);
     setSelectedId(id);
   }
@@ -191,6 +196,11 @@ export default function AdminPage() {
 
     if (!form.productName.trim()) {
       alert("請輸入商品名稱");
+      return false;
+    }
+
+    if (!form.couponNameCode.trim()) {
+      alert("請輸入 couponNameCode");
       return false;
     }
 
@@ -229,6 +239,7 @@ export default function AdminPage() {
         emoji: form.emoji || "🎁",
         weight: Number(form.rate),
         sort_order: sortOrder,
+        coupon_name_code: form.couponNameCode,
         activation_type: form.activationType,
         fixed_activate_date:
           form.activationType === "fixed_date" ? form.fixedActivateDate : null,
@@ -259,6 +270,7 @@ export default function AdminPage() {
         emoji: form.emoji || "🎁",
         weight: Number(form.rate),
         is_active: form.enabled,
+        coupon_name_code: form.couponNameCode,
         activation_type: form.activationType,
         fixed_activate_date:
           form.activationType === "fixed_date" ? form.fixedActivateDate : null,
@@ -276,8 +288,9 @@ export default function AdminPage() {
     }
   }
 
-  async function handleDelete() {
-    if (!selectedId) {
+  async function handleDelete(id?: string) {
+    const targetId = id || selectedId;
+    if (!targetId) {
       alert("請先選擇品項");
       return;
     }
@@ -287,9 +300,13 @@ export default function AdminPage() {
 
     setSaving(true);
     try {
-      await deletePrize(selectedId);
+      await deletePrize(targetId);
       alert("刪除成功");
-      resetEditor();
+
+      if (String(targetId) === String(selectedId)) {
+        resetEditor();
+      }
+
       await fetchPrizeConfigs();
     } catch (err) {
       console.error(err);
@@ -433,93 +450,13 @@ export default function AdminPage() {
               <button
                 type="button"
                 style={styles.createToggleButton}
-                onClick={() => {
-                  if (showCreateBox) {
-                    if (isCreating) {
-                      setIsCreating(false);
-                      setForm(emptyForm);
-                    }
-                    setShowCreateBox(false);
-                  } else {
-                    setShowCreateBox(true);
-                  }
-                }}
+                onClick={openCreateEditor}
               >
-                {showCreateBox ? "－收合新增品項" : "＋展開新增品項"}
+                ＋新增品項
               </button>
-
-              {showCreateBox && (
-                <>
-                  <div style={styles.createBoxTitle}>新增品項</div>
-
-                  <div style={styles.createGrid}>
-                    <div style={styles.createField}>
-                      <div style={styles.createLabel}>分類</div>
-                      <input
-                        style={styles.compactInput}
-                        value={form.category}
-                        onChange={(e) =>
-                          setForm((p) => ({ ...p, category: e.target.value }))
-                        }
-                        placeholder="例如：甜點"
-                      />
-                    </div>
-
-                    <div style={styles.createField}>
-                      <div style={styles.createLabel}>商品名稱</div>
-                      <input
-                        style={styles.compactInput}
-                        value={form.productName}
-                        onChange={(e) =>
-                          setForm((p) => ({ ...p, productName: e.target.value }))
-                        }
-                        placeholder="例如：手作布丁乙份"
-                      />
-                    </div>
-
-                    <div style={styles.createField}>
-                      <div style={styles.createLabel}>emoji</div>
-                      <input
-                        style={styles.compactInput}
-                        value={form.emoji}
-                        onChange={(e) =>
-                          setForm((p) => ({ ...p, emoji: e.target.value }))
-                        }
-                        placeholder="🎁"
-                      />
-                    </div>
-
-                    <div style={styles.createField}>
-                      <div style={styles.createLabel}>機率 (%)</div>
-                      <input
-                        style={styles.compactInput}
-                        type="number"
-                        step="0.1"
-                        value={form.rate}
-                        onChange={(e) =>
-                          setForm((p) => ({ ...p, rate: e.target.value }))
-                        }
-                        placeholder="例如：10"
-                      />
-                    </div>
-                  </div>
-
-                  <div style={styles.helperText}>
-                    類別與商品名稱分開管理，前台會自動顯示合成名稱；機率請直接輸入百分比數字。
-                  </div>
-
-                  <button
-                    type="button"
-                    style={styles.fullPrimaryButton}
-                    onClick={startCreate}
-                  >
-                    新增品項
-                  </button>
-                </>
-              )}
             </div>
 
-            {isCreating && (
+            {isCreating && showCreateBox && (
               <div style={styles.inlineEditorCard}>
                 <div style={styles.inlineEditorTitle}>新增品項</div>
                 <EditorForm
@@ -527,8 +464,11 @@ export default function AdminPage() {
                   setForm={setForm}
                   saving={saving}
                   isCreating={true}
-                  onCancel={resetEditor}
-                  onDelete={handleDelete}
+                  onCancel={() => {
+                    resetEditor();
+                    setShowCreateBox(false);
+                  }}
+                  onDelete={() => handleDelete()}
                   onSave={handleSave}
                   onCreate={handleCreate}
                 />
@@ -542,7 +482,7 @@ export default function AdminPage() {
                 style={styles.searchInput}
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                placeholder="搜尋品項名稱 / 分類 / 商品名稱"
+                placeholder="搜尋品項名稱 / 分類 / 商品名稱 / couponNameCode"
               />
             </div>
 
@@ -580,6 +520,7 @@ export default function AdminPage() {
 
                               <div style={styles.itemSubRowStack}>
                                 <span>{item.分類 || "未分類"}</span>
+                                <span>{item.couponNameCode || "-"}</span>
                               </div>
 
                               <div style={styles.itemSubRowStackLight}>
@@ -598,7 +539,7 @@ export default function AdminPage() {
                           </div>
                         </button>
 
-                        <div style={styles.sortButtons}>
+                        <div style={styles.sideActions}>
                           <button
                             type="button"
                             style={styles.sortButton}
@@ -615,6 +556,14 @@ export default function AdminPage() {
                           >
                             ↓
                           </button>
+                          <button
+                            type="button"
+                            style={styles.deleteMiniButton}
+                            disabled={saving}
+                            onClick={() => handleDelete(String(item.id))}
+                          >
+                            刪
+                          </button>
                         </div>
                       </div>
 
@@ -627,7 +576,7 @@ export default function AdminPage() {
                             saving={saving}
                             isCreating={false}
                             onCancel={resetEditor}
-                            onDelete={handleDelete}
+                            onDelete={() => handleDelete()}
                             onSave={handleSave}
                             onCreate={handleCreate}
                           />
@@ -706,6 +655,17 @@ function EditorForm({
             onChange={(e) =>
               setForm((p) => ({ ...p, rate: e.target.value }))
             }
+          />
+        </Field>
+
+        <Field label="couponNameCode">
+          <input
+            style={styles.input}
+            value={form.couponNameCode}
+            onChange={(e) =>
+              setForm((p) => ({ ...p, couponNameCode: e.target.value }))
+            }
+            placeholder="例如：E01"
           />
         </Field>
 
@@ -957,69 +917,16 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.6,
   },
   createBox: {
-    background: "#fffaf5",
-    border: "1px solid #ecdac7",
-    borderRadius: 18,
-    padding: 14,
     marginBottom: 16,
   },
   createToggleButton: {
     width: "100%",
-    minHeight: 46,
-    border: "1px solid #ebc9bb",
-    borderRadius: 14,
-    background: "#fff",
-    color: "#c43f1e",
-    fontSize: 15,
-    fontWeight: 800,
-    cursor: "pointer",
-    marginBottom: 12,
-  },
-  createBoxTitle: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#3d3330",
-    marginBottom: 12,
-  },
-  createGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 10,
-    marginBottom: 12,
-  },
-  createField: {
-    display: "grid",
-    gap: 6,
-  },
-  createLabel: {
-    fontSize: 13,
-    fontWeight: 700,
-    color: "#6c5d55",
-  },
-  compactInput: {
-    minHeight: 48,
-    borderRadius: 14,
-    border: "1px solid #ead5ca",
-    background: "#f3efe6",
-    padding: "0 14px",
-    fontSize: 16,
-    boxSizing: "border-box",
-    width: "100%",
-  },
-  helperText: {
-    fontSize: 13,
-    color: "#a1948e",
-    marginBottom: 14,
-    lineHeight: 1.6,
-  },
-  fullPrimaryButton: {
-    width: "100%",
-    minHeight: 48,
+    minHeight: 50,
     border: "none",
     borderRadius: 14,
     background: "#d1421f",
     color: "#fff",
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 800,
     cursor: "pointer",
   },
@@ -1066,7 +973,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   listItemWrapWarm: {
     display: "grid",
-    gridTemplateColumns: "1fr 70px",
+    gridTemplateColumns: "1fr 82px",
     gap: 0,
     border: "1px solid #ecdac7",
     borderRadius: 18,
@@ -1119,24 +1026,35 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 8,
     lineHeight: 1.5,
   },
-  sortButtons: {
+  sideActions: {
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
-    gap: 10,
+    gap: 8,
     padding: 10,
     borderLeft: "1px solid #eee3d7",
     background: "#f7f2ea",
   },
   sortButton: {
     width: 46,
-    height: 46,
-    borderRadius: 14,
+    height: 40,
+    borderRadius: 12,
     border: "1px solid #ddd",
     background: "#fff",
     cursor: "pointer",
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 700,
+  },
+  deleteMiniButton: {
+    width: 46,
+    height: 40,
+    borderRadius: 12,
+    border: "none",
+    background: "#d32f2f",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: 16,
+    fontWeight: 800,
   },
   itemName: {
     fontSize: 18,
