@@ -772,16 +772,7 @@ function EditorForm({
             {saving ? "新增中..." : "新增品項"}
           </button>
         ) : (
-          <>
-            <button
-              type="button"
-              style={styles.dangerButton}
-              onClick={onDelete}
-              disabled={saving}
-            >
-              {saving ? "處理中..." : "刪除品項"}
-            </button>
-            <button
+          <button
               type="button"
               style={styles.primaryButton}
               onClick={onSave}
@@ -789,7 +780,6 @@ function EditorForm({
             >
               {saving ? "儲存中..." : "儲存設定"}
             </button>
-          </>
         )}
       </div>
     </>
