@@ -1,5 +1,8 @@
 import { supabase } from "../lib/supabase";
 
+const GAS_SYNC_URL =
+  "https://script.google.com/macros/s/AKfycbzcbQVtpMm6NB_raNv7L91OzrXGwoSN-jfLL-FHF6Kh7oPjX8XqDYDqy2Rzv5hW1TWB/exec";
+
 export type LotteryRecord = {
   id?: string;
   code: string;
@@ -133,26 +136,30 @@ export async function addPrize(input: {
 }) {
   const name = `${input.category_name} ${input.product_name}`.trim();
 
-  const { error } = await supabase.from("prizes").insert({
-    name,
-    category_name: input.category_name,
-    product_name: input.product_name,
-    emoji: input.emoji,
-    weight: Number(input.weight),
-    sort_order: Number(input.sort_order ?? 0),
-    is_active: true,
-    coupon_name_code: input.coupon_name_code ?? "",
-    activation_type: input.activation_type ?? "same_day",
-    fixed_activate_date:
-      input.activation_type === "fixed_date"
-        ? input.fixed_activate_date ?? null
-        : null,
-    valid_months: Number(input.valid_months ?? 1),
-    note: input.note ?? "",
-  });
+  const { data, error } = await supabase
+    .from("prizes")
+    .insert({
+      name,
+      category_name: input.category_name,
+      product_name: input.product_name,
+      emoji: input.emoji,
+      weight: Number(input.weight),
+      sort_order: Number(input.sort_order ?? 0),
+      is_active: true,
+      coupon_name_code: input.coupon_name_code ?? "",
+      activation_type: input.activation_type ?? "same_day",
+      fixed_activate_date:
+        input.activation_type === "fixed_date"
+          ? input.fixed_activate_date ?? null
+          : null,
+      valid_months: Number(input.valid_months ?? 1),
+      note: input.note ?? "",
+    })
+    .select("*")
+    .single();
 
   if (error) throw error;
-  return true;
+  return data;
 }
 
 export async function updatePrize(
@@ -208,15 +215,83 @@ export async function updatePrize(
     payload.fixed_activate_date = null;
   }
 
-  const { error } = await supabase.from("prizes").update(payload).eq("id", id);
+  const { data, error } = await supabase
+    .from("prizes")
+    .update(payload)
+    .eq("id", id)
+    .select("*")
+    .single();
+
   if (error) throw error;
-  return true;
+  return data;
 }
 
 export async function deletePrize(id: string) {
   const { error } = await supabase.from("prizes").delete().eq("id", id);
   if (error) throw error;
   return true;
+}
+
+export async function syncPrizeToGas(input: {
+  id?: string;
+  sortOrder?: number;
+  couponNameCode: string;
+  name: string;
+  category: string;
+  weight: number;
+  activationType: "same_day" | "next_day" | "fixed_date";
+  fixedActivateDate?: string;
+  validMonths: number;
+  note?: string;
+  enabled: boolean;
+}) {
+  const res = await fetch(GAS_SYNC_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      action: "syncPrize",
+      id: input.id || "",
+      sortOrder: Number(input.sortOrder || 0),
+      couponNameCode: input.couponNameCode,
+      name: input.name,
+      category: input.category,
+      weight: Number(input.weight || 0),
+      activationType: input.activationType,
+      fixedActivateDate: input.fixedActivateDate || "",
+      validMonths: Number(input.validMonths || 1),
+      note: input.note || "",
+      enabled: input.enabled,
+    }),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.message || "同步到 Google Sheet 失敗");
+  }
+
+  return json;
+}
+
+export async function disablePrizeInGas(couponNameCode: string) {
+  const res = await fetch(GAS_SYNC_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      action: "disablePrize",
+      couponNameCode,
+    }),
+  });
+
+  const json = await res.json();
+  if (!json.success) {
+    throw new Error(json.message || "停用 Google Sheet 獎項失敗");
+  }
+
+  return json;
 }
 
 export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
