@@ -1,694 +1,38 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  addPrize,
-  deletePrize,
-  getAllPrizes,
-  updatePrize,
-  type PrizeItem,
-} from "../../utils/lotteryUtils";
+import { drawPrizeSecure, getAllPrizes, getCurrentPrize, type PrizeItem } from "../../utils/lotteryUtils";
 
-type PrizeConfig = {
-  sortOrder: number | string;
-  id: string;
-  品項名稱: string;
-  活動名稱: string;
-  商品名稱: string;
-  emoji: string;
-  機率: number | string;
-  備註: string;
-  啟用: boolean | string;
-};
-
-const ADMIN_PASSWORDS = ["riceking168", "xiang1224"];
-
-const emptyForm = {
-  id: "",
-  category: "",
-  productName: "",
-  emoji: "🎁",
-  rate: "0",
-  note: "",
-  enabled: true,
-};
-
-function toPrizeConfig(item: PrizeItem): PrizeConfig {
-  return {
-    sortOrder: item.sort_order,
-    id: item.id,
-    品項名稱: `${item.category_name ?? ""} ${item.product_name ?? ""}`.trim(),
-    活動名稱: item.category_name ?? "",
-    商品名稱: item.product_name ?? "",
-    emoji: item.emoji ?? "🎁",
-    機率: Number(item.weight ?? 0),
-    備註: item.note ?? "",
-    啟用: Boolean(item.is_active),
-  };
+function formatDate(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}/${m}/${d}`;
 }
 
-export default function AdminPage() {
-  const navigate = useNavigate();
-
-  const [passwordInput, setPasswordInput] = useState("");
-  const [isUnlocked, setIsUnlocked] = useState(
-    sessionStorage.getItem("admin_unlocked") === "true"
-  );
-
-  const [items, setItems] = useState<PrizeConfig[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [keyword, setKeyword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [showCreateBox, setShowCreateBox] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-
-  const selectedItem = useMemo(
-    () => items.find((item) => String(item.id) === String(selectedId)),
-    [items, selectedId]
-  );
-
-  const filteredItems = useMemo(() => {
-    const kw = keyword.trim().toLowerCase();
-    if (!kw) return items;
-
-    return items.filter((item) => {
-      const text = [item.品項名稱, item.活動名稱, item.商品名稱, item.備註]
-        .map((v) => String(v || "").toLowerCase())
-        .join(" ");
-
-      return text.includes(kw);
-    });
-  }, [items, keyword]);
-
-  const totalRate = useMemo(() => {
-    return items.reduce((sum, item) => {
-      const enabled =
-        item.啟用 === true ||
-        String(item.啟用).toLowerCase() === "true" ||
-        String(item.啟用) === "1";
-
-      if (!enabled) return sum;
-
-      const n = Number(item.機率 || 0);
-      return sum + (isNaN(n) ? 0 : n);
-    }, 0);
-  }, [items]);
-
-  useEffect(() => {
-    if (isUnlocked) {
-      void fetchPrizeConfigs();
-    }
-  }, [isUnlocked]);
-
-  useEffect(() => {
-    if (!selectedItem || isCreating) return;
-
-    setForm({
-      id: String(selectedItem.id || ""),
-      category: String(selectedItem.活動名稱 || ""),
-      productName: String(selectedItem.商品名稱 || ""),
-      emoji: String(selectedItem.emoji || "🎁"),
-      rate: String(selectedItem.機率 ?? "0"),
-      note: String(selectedItem.備註 || ""),
-      enabled:
-        selectedItem.啟用 === true ||
-        String(selectedItem.啟用).toLowerCase() === "true" ||
-        String(selectedItem.啟用) === "1",
-    });
-  }, [selectedItem, isCreating]);
-
-  async function fetchPrizeConfigs() {
-    setLoading(true);
-    try {
-      const data = await getAllPrizes(true);
-      setItems(data.map(toPrizeConfig));
-    } catch (err) {
-      console.error(err);
-      alert("讀取獎項設定失敗");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleUnlock() {
-    if (ADMIN_PASSWORDS.includes(passwordInput)) {
-      sessionStorage.setItem("admin_unlocked", "true");
-      setIsUnlocked(true);
-      setPasswordInput("");
-      return;
-    }
-    alert("密碼錯誤");
-  }
-
-  function handleLogout() {
-    sessionStorage.removeItem("admin_unlocked");
-    setIsUnlocked(false);
-    setPasswordInput("");
-    setSelectedId("");
-    setIsCreating(false);
-    setShowCreateBox(false);
-    setForm(emptyForm);
-  }
-
-  function openCreateEditor() {
-    setShowCreateBox(true);
-    setIsCreating(true);
-    setSelectedId("");
-    setForm(emptyForm);
-  }
-
-  function selectItem(id: string) {
-    if (String(selectedId) === String(id) && !isCreating) {
-      setSelectedId("");
-      return;
-    }
-    setShowCreateBox(false);
-    setIsCreating(false);
-    setSelectedId(id);
-  }
-
-  function resetEditor() {
-    setIsCreating(false);
-    setSelectedId("");
-    setForm(emptyForm);
-  }
-
-  function validateForm() {
-    if (!form.category.trim()) {
-      alert("請輸入活動名稱");
-      return false;
-    }
-
-    if (!form.productName.trim()) {
-      alert("請輸入品項名稱");
-      return false;
-    }
-
-    const rate = Number(form.rate);
-    if (isNaN(rate) || rate < 0) {
-      alert("機率格式錯誤");
-      return false;
-    }
-
-    return true;
-  }
-
-  async function handleCreate() {
-    if (!validateForm()) return;
-
-    setSaving(true);
-    try {
-      const sortOrder = items.length
-        ? Math.max(...items.map((i) => Number(i.sortOrder || 0))) + 1
-        : 1;
-
-      await addPrize({
-        category_name: form.category,
-        product_name: form.productName,
-        emoji: form.emoji || "🎁",
-        weight: Number(form.rate),
-        sort_order: sortOrder,
-        note: form.note,
-      });
-
-      alert("新增成功");
-      resetEditor();
-      setShowCreateBox(false);
-      await fetchPrizeConfigs();
-    } catch (err) {
-      console.error(err);
-      alert("新增失敗");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleSave() {
-    if (!validateForm() || !form.id) return;
-
-    setSaving(true);
-    try {
-      await updatePrize(form.id, {
-        category_name: form.category,
-        product_name: form.productName,
-        emoji: form.emoji || "🎁",
-        weight: Number(form.rate),
-        is_active: form.enabled,
-        note: form.note,
-      });
-
-      alert("更新成功");
-      await fetchPrizeConfigs();
-    } catch (err) {
-      console.error(err);
-      alert("更新失敗");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete(id?: string) {
-    const targetId = id || selectedId;
-    if (!targetId) {
-      alert("請先選擇品項");
-      return;
-    }
-
-    const ok = window.confirm("確定要刪除這個品項嗎？刪除後無法復原。");
-    if (!ok) return;
-
-    setSaving(true);
-    try {
-      await deletePrize(targetId);
-      alert("刪除成功");
-
-      if (String(targetId) === String(selectedId)) {
-        resetEditor();
-      }
-
-      await fetchPrizeConfigs();
-    } catch (err) {
-      console.error(err);
-      alert("刪除失敗");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleMove(direction: "up" | "down", id: string) {
-    const currentIndex = items.findIndex((item) => String(item.id) === String(id));
-    if (currentIndex === -1) return;
-
-    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= items.length) return;
-
-    const current = items[currentIndex];
-    const target = items[targetIndex];
-
-    setSaving(true);
-    try {
-      await updatePrize(String(current.id), {
-        sort_order: Number(target.sortOrder),
-      });
-
-      await updatePrize(String(target.id), {
-        sort_order: Number(current.sortOrder),
-      });
-
-      await fetchPrizeConfigs();
-    } catch (err) {
-      console.error(err);
-      alert("排序失敗");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (!isUnlocked) {
-    return (
-      <div style={styles.page}>
-        <div style={styles.topBar} />
-        <div style={styles.shell}>
-          <div style={styles.headerCard}>
-            <div style={styles.headerTop}>
-              <div style={styles.headerTitleRow}>
-                <h1 style={styles.brandTitle}>後台管理系統</h1>
-              </div>
-
-              <button
-                type="button"
-                style={styles.headerOutlineButton}
-                onClick={() => navigate("/")}
-              >
-                返回前台
-              </button>
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <h2 style={styles.sectionTitle}>輸入管理密碼</h2>
-
-            <div style={{ maxWidth: 420 }}>
-              <input
-                type="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleUnlock();
-                }}
-                placeholder="請輸入後台密碼"
-                style={styles.input}
-              />
-
-              <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-                <button
-                  type="button"
-                  style={styles.secondaryButton}
-                  onClick={() => navigate("/")}
-                >
-                  返回前台
-                </button>
-
-                <button
-                  type="button"
-                  style={styles.primaryButton}
-                  onClick={handleUnlock}
-                >
-                  進入後台
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={styles.page}>
-      <div style={styles.topBar} />
-      <div style={styles.shell}>
-        <div style={styles.headerCard}>
-          <div style={styles.headerTop}>
-            <div style={styles.headerTitleRow}>
-              <h1 style={styles.brandTitle}>後台管理系統</h1>
-            </div>
-
-            <div style={styles.headerButtonGroup}>
-              <button
-                type="button"
-                style={styles.headerOutlineButton}
-                onClick={() => navigate("/")}
-              >
-                返回前台
-              </button>
-
-              <button
-                type="button"
-                style={styles.headerSolidButton}
-                onClick={handleLogout}
-              >
-                登出
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div style={styles.cardWarm}>
-          <div style={styles.cardWarmHeader}>
-            <span>🎯 獎項管理</span>
-            <span style={styles.rateInfo}>啟用中總機率：{roundRate(totalRate)}%</span>
-          </div>
-
-          <div style={styles.cardWarmBody}>
-            <div style={styles.noticeBox}>
-              提醒：建議啟用中的獎項總機率加總為 100%。
-            </div>
-
-            <div style={styles.createBox}>
-              <button
-                type="button"
-                style={styles.createToggleButton}
-                onClick={openCreateEditor}
-              >
-                ＋新增品項
-              </button>
-            </div>
-
-            {isCreating && showCreateBox && (
-              <div style={styles.inlineEditorCard}>
-                <div style={styles.inlineEditorTitle}>新增品項</div>
-                <EditorForm
-                  form={form}
-                  setForm={setForm}
-                  saving={saving}
-                  isCreating={true}
-                  onCancel={() => {
-                    resetEditor();
-                    setShowCreateBox(false);
-                  }}
-                  onSave={handleSave}
-                  onCreate={handleCreate}
-                />
-              </div>
-            )}
-
-            <h2 style={styles.sectionTitle}>全部品項</h2>
-
-            <div style={styles.searchWrap}>
-              <input
-                style={styles.searchInput}
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder="搜尋活動名稱 / 品項名稱 / 備註"
-              />
-            </div>
-
-            {loading ? (
-              <div style={styles.empty}>載入中...</div>
-            ) : filteredItems.length === 0 ? (
-              <div style={styles.empty}>查無符合的品項</div>
-            ) : (
-              <div style={styles.list}>
-                {filteredItems.map((item, index) => {
-                  const active = String(item.id) === String(selectedId);
-                  const enabled =
-                    item.啟用 === true ||
-                    String(item.啟用).toLowerCase() === "true" ||
-                    String(item.啟用) === "1";
-
-                  return (
-                    <div key={item.id} style={styles.inlineBlock}>
-                      <div
-                        style={{
-                          ...styles.listItemWrapWarm,
-                          ...(active ? styles.listItemWrapActive : {}),
-                        }}
-                      >
-                        <button
-                          type="button"
-                          style={styles.listItemButton}
-                          onClick={() => selectItem(String(item.id))}
-                        >
-                          <div style={styles.itemTopRowMobile}>
-                            <div style={styles.itemMainInfo}>
-                              <div style={styles.itemName}>
-                                {item.sortOrder}. {item.品項名稱}
-                              </div>
-
-                              <div style={styles.itemSubRowStack}>
-                                <span>活動：{item.活動名稱 || "未設定"}</span>
-                                <span>品項：{item.商品名稱 || "未設定"}</span>
-                              </div>
-
-                              <div style={styles.itemSubRowStackLight}>
-                                <span>{enabled ? "啟用中" : "未啟用"}</span>
-                                {!!item.備註 && <span>備註：{item.備註}</span>}
-                              </div>
-                            </div>
-
-                            <div style={styles.itemRightInfo}>
-                              <div style={styles.itemRate}>
-                                {roundRate(Number(item.機率 || 0))}%
-                              </div>
-                              <div style={styles.itemTapHint}>
-                                {active ? "收起" : "點擊編輯"}
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-
-                        <div style={styles.sideActions}>
-                          <button
-                            type="button"
-                            style={styles.sortButton}
-                            disabled={saving || index === 0}
-                            onClick={() => handleMove("up", String(item.id))}
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            style={styles.sortButton}
-                            disabled={saving || index === filteredItems.length - 1}
-                            onClick={() => handleMove("down", String(item.id))}
-                          >
-                            ↓
-                          </button>
-                          <button
-                            type="button"
-                            style={styles.deleteMiniButton}
-                            disabled={saving}
-                            onClick={() => handleDelete(String(item.id))}
-                          >
-                            刪
-                          </button>
-                        </div>
-                      </div>
-
-                      {active && !isCreating && (
-                        <div style={styles.inlineEditorCard}>
-                          <div style={styles.inlineEditorTitle}>品項詳細設定</div>
-                          <EditorForm
-                            form={form}
-                            setForm={setForm}
-                            saving={saving}
-                            isCreating={false}
-                            onCancel={resetEditor}
-                            onSave={handleSave}
-                            onCreate={handleCreate}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+function getExpireDate(drawTime: string) {
+  const base = new Date(drawTime);
+  if (isNaN(base.getTime())) return "";
+  const expire = new Date(base);
+  expire.setMonth(expire.getMonth() + 1);
+  return formatDate(expire);
 }
 
-function EditorForm({
-  form,
-  setForm,
-  saving,
-  isCreating,
-  onCancel,
-  onSave,
-  onCreate,
-}: {
-  form: typeof emptyForm;
-  setForm: React.Dispatch<React.SetStateAction<typeof emptyForm>>;
-  saving: boolean;
-  isCreating: boolean;
-  onCancel: () => void;
-  onSave: () => void;
-  onCreate: () => void;
-}) {
-  return (
-    <>
-      <div style={styles.formGrid}>
-        <Field label="活動名稱">
-          <input
-            style={styles.input}
-            value={form.category}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, category: e.target.value }))
-            }
-          />
-        </Field>
-
-        <Field label="品項名稱">
-          <input
-            style={styles.input}
-            value={form.productName}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, productName: e.target.value }))
-            }
-          />
-        </Field>
-
-        <Field label="emoji">
-          <input
-            style={styles.input}
-            value={form.emoji}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, emoji: e.target.value }))
-            }
-          />
-        </Field>
-
-        <Field label="機率 (%)">
-          <input
-            style={styles.input}
-            type="number"
-            step="0.1"
-            value={form.rate}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, rate: e.target.value }))
-            }
-          />
-        </Field>
-
-        <Field label="是否啟用">
-          <select
-            style={styles.input}
-            value={String(form.enabled)}
-            onChange={(e) =>
-              setForm((p) => ({
-                ...p,
-                enabled: e.target.value === "true",
-              }))
-            }
-          >
-            <option value="true">啟用</option>
-            <option value="false">停用</option>
-          </select>
-        </Field>
-      </div>
-
-      <Field label="備註">
-        <textarea
-          style={styles.textarea}
-          rows={4}
-          value={form.note}
-          onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))}
-          placeholder="例如：限內用、不得與其他優惠併用、有效期限為抽中後 1 個月..."
-        />
-      </Field>
-
-      <div style={styles.actionRow}>
-        <button
-          type="button"
-          style={styles.secondaryButton}
-          onClick={onCancel}
-          disabled={saving}
-        >
-          返回列表
-        </button>
-
-        {isCreating ? (
-          <button
-            type="button"
-            style={styles.primaryButton}
-            onClick={onCreate}
-            disabled={saving}
-          >
-            {saving ? "新增中..." : "新增品項"}
-          </button>
-        ) : (
-          <button
-            type="button"
-            style={styles.primaryButton}
-            onClick={onSave}
-            disabled={saving}
-          >
-            {saving ? "儲存中..." : "儲存設定"}
-          </button>
-        )}
-      </div>
-    </>
-  );
+function getStartDate(drawTime: string) {
+  const base = new Date(drawTime);
+  if (isNaN(base.getTime())) return "";
+  return formatDate(base);
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={styles.fieldWrap}>
-      <div style={styles.label}>{label}</div>
-      {children}
-    </div>
-  );
+function formatTime(value?: string) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  return d.toLocaleString("zh-TW", {
+    hour12: false,
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function roundRate(value: number) {
@@ -697,341 +41,620 @@ function roundRate(value: number) {
     : value.toFixed(2).replace(/\.?0+$/, "");
 }
 
+export default function HomePage() {
+  const [prizes, setPrizes] = useState<PrizeItem[]>([]);
+  const [loadingPrizes, setLoadingPrizes] = useState(true);
+  const [drawing, setDrawing] = useState(false);
+  const [error, setError] = useState("");
+  const [lockMessage, setLockMessage] = useState("");
+  const [lockUntil, setLockUntil] = useState("");
+  const [displayText, setDisplayText] = useState("開始抽獎");
+  const [displayEmoji, setDisplayEmoji] = useState("🍚");
+  const [result, setResult] = useState<{
+    activityName: string;
+    prizeName: string;
+    note: string;
+    startDate: string;
+    expireDate: string;
+  } | null>(null);
+
+  const activePrizes = useMemo(
+    () => prizes.filter((p) => p.is_active),
+    [prizes]
+  );
+
+  const totalRate = useMemo(() => {
+    return activePrizes.reduce((sum, p) => sum + Number(p.weight || 0), 0);
+  }, [activePrizes]);
+
+  useEffect(() => {
+    void loadPrizes();
+    void loadCurrentPrize();
+  }, []);
+
+  async function loadPrizes() {
+    setLoadingPrizes(true);
+    try {
+      const data = await getAllPrizes(false);
+      setPrizes(data);
+
+      if (data.length > 0) {
+        setDisplayText(data[0].product_name || "開始抽獎");
+        setDisplayEmoji(data[0].emoji || "🍚");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("讀取機率表失敗");
+    } finally {
+      setLoadingPrizes(false);
+    }
+  }
+
+  async function loadCurrentPrize() {
+    try {
+      const data = await getCurrentPrize();
+
+      if (data.status === "active") {
+        const record = data.record;
+        const name = String(record.prize_name || "").trim();
+        const parts = name.split(" ");
+        const activityName = parts[0] || "抽獎活動";
+        const prizeName = name.replace(activityName, "").trim() || name;
+
+        setResult({
+          activityName,
+          prizeName,
+          note: "",
+          startDate: getStartDate(record.draw_time),
+          expireDate: getExpireDate(record.draw_time),
+        });
+
+        setDisplayText(prizeName);
+        setDisplayEmoji(record.prize_emoji || "🎁");
+        setLockMessage("此裝置 2 小時內已抽過獎");
+        setLockUntil(formatTime(data.expiresAt));
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function handleDraw() {
+    if (drawing) return;
+
+    setDrawing(true);
+    setError("");
+    setLockMessage("");
+    setResult(null);
+
+    let timer: number | undefined;
+
+    if (activePrizes.length > 0) {
+      timer = window.setInterval(() => {
+        const randomPrize = activePrizes[Math.floor(Math.random() * activePrizes.length)];
+        setDisplayText(randomPrize.product_name || "抽獎中");
+        setDisplayEmoji(randomPrize.emoji || "🎁");
+      }, 120);
+    }
+
+    try {
+      const res = await drawPrizeSecure();
+
+      window.setTimeout(() => {
+        if (timer) window.clearInterval(timer);
+
+        if (!res.ok && res.locked) {
+          setLockMessage(res.message || "2 小時內無法重複抽取");
+          setLockUntil(formatTime(res.expiresAt));
+          setDisplayText("已抽過");
+          setDisplayEmoji("⏳");
+          setDrawing(false);
+          return;
+        }
+
+        if (res.ok) {
+          const prize = res.prize;
+          const drawTime = res.record?.draw_time || new Date().toISOString();
+
+          setDisplayText(prize.product_name || prize.name || "中獎");
+          setDisplayEmoji(prize.emoji || "🎁");
+
+          setResult({
+            activityName: prize.category_name || "抽獎活動",
+            prizeName: prize.product_name || prize.name || "未命名獎項",
+            note: prize.note || "",
+            startDate: getStartDate(drawTime),
+            expireDate: getExpireDate(drawTime),
+          });
+
+          setLockMessage("此裝置 2 小時內已抽過獎");
+          setLockUntil(formatTime(res.expiresAt));
+        }
+
+        setDrawing(false);
+      }, 5000);
+    } catch (err) {
+      if (timer) window.clearInterval(timer);
+      console.error(err);
+      setError("抽獎失敗，請稍後再試");
+      setDisplayText("抽獎失敗");
+      setDisplayEmoji("⚠️");
+      setDrawing(false);
+    }
+  }
+
+  return (
+    <div style={styles.page}>
+      <div style={styles.patternOverlay} />
+
+      <div style={styles.container}>
+        <div style={styles.logoWrap}>
+          <div style={styles.logoCircle}>
+            <div style={styles.logoInner}>童叟無欺</div>
+          </div>
+        </div>
+
+        <div style={styles.titleGroup}>
+          <div style={styles.subTitleLine}>
+            <span style={styles.subLine} />
+            <span style={styles.subTitle}>吃飽就有獎</span>
+            <span style={styles.subLine} />
+          </div>
+
+          <h1 style={styles.mainTitle}>童叟無欺！開抽！</h1>
+          <div style={styles.desc}>光盤有獎，吃乾淨就能抽</div>
+        </div>
+
+        <div style={styles.midDivider}>
+          <span style={styles.dividerLine} />
+          <span style={styles.dividerIcon}>⊕</span>
+          <span style={styles.dividerLine} />
+        </div>
+
+        <div style={styles.wheelArea}>
+          <span style={{ ...styles.dot, top: -8, left: "50%", transform: "translateX(-50%)", background: "#d6421f" }} />
+          <span style={{ ...styles.dot, top: 42, left: 20, background: "#d6a621" }} />
+          <span style={{ ...styles.dot, top: 42, right: 20, background: "#d6a621" }} />
+          <span style={{ ...styles.dot, top: "50%", left: -10, transform: "translateY(-50%)", background: "#d6421f" }} />
+          <span style={{ ...styles.dot, top: "50%", right: -10, transform: "translateY(-50%)", background: "#d6421f" }} />
+          <span style={{ ...styles.dot, bottom: 42, left: 20, background: "#d6a621" }} />
+          <span style={{ ...styles.dot, bottom: 42, right: 20, background: "#d6a621" }} />
+          <span style={{ ...styles.dot, bottom: -8, left: "50%", transform: "translateX(-50%)", background: "#d6421f" }} />
+
+          <div style={styles.wheelOuter}>
+            <div style={styles.wheelInner}>
+              <div style={styles.wheelContent}>
+                <div style={{ ...styles.wheelEmoji, ...(drawing ? styles.wheelEmojiSpinning : {}) }}>
+                  {displayEmoji}
+                </div>
+                <div style={{ ...styles.wheelText, ...(drawing ? styles.wheelTextSpinning : {}) }}>
+                  {displayText}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleDraw}
+          disabled={drawing || activePrizes.length === 0}
+          style={{
+            ...styles.drawButton,
+            ...(drawing || activePrizes.length === 0 ? styles.drawButtonDisabled : {}),
+          }}
+        >
+          ✦ 開始抽獎 ✦
+        </button>
+
+        <div style={styles.tip}>吃完光盤後，請點擊按鈕開始抽獎</div>
+
+        {!!error && <div style={styles.errorBox}>{error}</div>}
+
+        {!!lockMessage && (
+          <div style={styles.noticeBox}>
+            <div>{lockMessage}</div>
+            {!!lockUntil && <div style={{ marginTop: 6 }}>可再次抽獎時間：{lockUntil}</div>}
+          </div>
+        )}
+
+        {result && (
+          <div style={styles.resultCard}>
+            <div style={styles.resultBadge}>恭喜中獎</div>
+            <div style={styles.resultActivity}>{result.activityName}</div>
+            <div style={styles.resultPrize}>{result.prizeName}</div>
+
+            {!!result.note && (
+              <div style={styles.resultNoteBox}>
+                <div style={styles.resultLabel}>備註</div>
+                <div style={styles.resultNote}>{result.note}</div>
+              </div>
+            )}
+
+            <div style={styles.resultDateBox}>
+              <div style={styles.resultLabel}>使用期限</div>
+              <div style={styles.resultDate}>
+                {result.startDate}
+                <br />～
+                <br />
+                {result.expireDate}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={styles.tableCard}>
+          <div style={styles.tableHeader}>
+            <span>中獎機率表</span>
+            <span>總機率：{roundRate(totalRate)}%</span>
+          </div>
+
+          {loadingPrizes ? (
+            <div style={styles.emptyBox}>載入中...</div>
+          ) : activePrizes.length === 0 ? (
+            <div style={styles.emptyBox}>目前沒有可抽獎項</div>
+          ) : (
+            <div style={styles.prizeList}>
+              {activePrizes.map((item) => (
+                <div key={item.id} style={styles.prizeRow}>
+                  <div style={styles.prizeRowLeft}>
+                    <div style={styles.prizeName}>
+                      {item.category_name}｜{item.product_name}
+                    </div>
+                    {!!item.note && (
+                      <div style={styles.prizeNote}>備註：{item.note}</div>
+                    )}
+                  </div>
+                  <div style={styles.prizeRate}>
+                    {roundRate(Number(item.weight || 0))}%
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={styles.adminLinkWrap}>
+          <a href="#/admin" style={styles.adminLink}>
+            後台管理
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const styles: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
-    background: "#f6f1e7",
+    position: "relative",
+    background: "#f8f4e8",
+    overflowX: "hidden",
   },
-  topBar: {
-    width: "100%",
-    height: 10,
-    background:
-      "linear-gradient(90deg, #d46b2c 0%, #c43f1e 40%, #d7a328 100%)",
+  patternOverlay: {
+    position: "absolute",
+    inset: 0,
+    backgroundImage:
+      "radial-gradient(circle at 20px 20px, rgba(216,74,40,0.03) 2px, transparent 2px), linear-gradient(rgba(223,122,94,0.10) 2px, transparent 2px)",
+    backgroundSize: "80px 80px, 100% 88px",
+    pointerEvents: "none",
   },
-  shell: {
-    maxWidth: 980,
+  container: {
+    position: "relative",
+    zIndex: 1,
+    maxWidth: 760,
     margin: "0 auto",
-    padding: "10px 10px 24px",
+    padding: "28px 16px 40px",
+    textAlign: "center",
   },
-  headerCard: {
-    background: "#fff",
-    borderBottom: "1px solid #edd7cf",
-    padding: "12px 16px",
-    marginBottom: 14,
-    borderRadius: 18,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
-  },
-  headerTop: {
+  logoWrap: {
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent: "center",
+    marginBottom: 18,
+  },
+  logoCircle: {
+    width: 140,
+    height: 140,
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #d38d1e 0%, #d63e1d 100%)",
+    padding: 6,
+    boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
+  },
+  logoInner: {
+    width: "100%",
+    height: "100%",
+    borderRadius: "50%",
+    background: "#f7ecd8",
+    display: "flex",
     alignItems: "center",
-    gap: 10,
-    flexWrap: "nowrap",
+    justifyContent: "center",
+    color: "#5b2d1a",
+    fontSize: 28,
+    fontWeight: 900,
+    letterSpacing: "0.08em",
   },
-  headerTitleRow: {
+  titleGroup: {
+    marginBottom: 24,
+  },
+  subTitleLine: {
     display: "flex",
     alignItems: "center",
-    minHeight: 44,
+    justifyContent: "center",
+    gap: 12,
+    marginBottom: 10,
   },
-  headerButtonGroup: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "nowrap",
-    justifyContent: "flex-end",
-    flexShrink: 0,
+  subLine: {
+    width: 90,
+    height: 2,
+    background: "#c97d61",
+    opacity: 0.65,
   },
-  brandTitle: {
-    margin: 0,
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#c43f1e",
-    lineHeight: 1,
-    whiteSpace: "nowrap",
-  },
-  cardWarm: {
-    background: "#f8f2ef",
-    borderRadius: 20,
-    overflow: "hidden",
-    border: "1px solid #ead5ca",
-    marginBottom: 16,
-  },
-  cardWarmHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-    padding: "14px 16px",
-    color: "#d1421f",
-    fontSize: 18,
-    fontWeight: 800,
-    borderBottom: "1px solid #ead5ca",
-  },
-  rateInfo: {
-    fontSize: 14,
+  subTitle: {
+    color: "#c36d4c",
+    fontSize: 16,
     fontWeight: 700,
+    letterSpacing: "0.18em",
   },
-  cardWarmBody: {
-    padding: 14,
+  mainTitle: {
+    margin: 0,
+    fontSize: 46,
+    lineHeight: 1.15,
+    color: "#c83a1f",
+    fontWeight: 900,
+    letterSpacing: "0.04em",
   },
-  noticeBox: {
-    border: "1px solid #f0b67f",
-    borderRadius: 16,
-    padding: "14px 16px",
-    background: "#fffaf4",
-    color: "#9a5b2b",
-    marginBottom: 16,
-    fontSize: 14,
-    lineHeight: 1.6,
-  },
-  createBox: {
-    marginBottom: 16,
-  },
-  createToggleButton: {
-    width: "100%",
-    minHeight: 50,
-    border: "none",
-    borderRadius: 14,
-    background: "#d1421f",
-    color: "#fff",
+  desc: {
+    marginTop: 12,
+    color: "#9e8b79",
     fontSize: 18,
-    fontWeight: 800,
-    cursor: "pointer",
+    fontWeight: 500,
   },
-  card: {
-    background: "#fff",
-    borderRadius: 18,
-    padding: 16,
-    boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
-    marginBottom: 16,
+  midDivider: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    margin: "30px 0 24px",
   },
-  sectionTitle: {
-    margin: "0 0 14px",
-    fontSize: 20,
-    fontWeight: 800,
-    color: "#3d3330",
+  dividerLine: {
+    width: 150,
+    height: 2,
+    background: "#ddc6b7",
   },
-  searchWrap: {
-    marginBottom: 14,
+  dividerIcon: {
+    color: "#d1a52c",
+    fontSize: 28,
+    lineHeight: 1,
   },
-  searchInput: {
+  wheelArea: {
+    position: "relative",
+    width: 520,
+    maxWidth: "100%",
+    margin: "0 auto 26px",
+    padding: "24px 16px",
+  },
+  dot: {
+    position: "absolute",
+    width: 22,
+    height: 22,
+    borderRadius: "50%",
+  },
+  wheelOuter: {
     width: "100%",
-    minHeight: 50,
-    borderRadius: 16,
-    border: "1px solid #ead5ca",
-    padding: "0 14px",
-    fontSize: 15,
-    background: "#fff",
+    aspectRatio: "1 / 1",
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #cf8b18 0%, #d43d1f 100%)",
+    padding: 12,
+    boxShadow: "0 10px 24px rgba(162,64,26,0.14)",
+  },
+  wheelInner: {
+    width: "100%",
+    height: "100%",
+    borderRadius: "50%",
+    background: "#fff8ef",
+    border: "6px solid #f0d5c6",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  wheelContent: {
+    width: "82%",
+    height: "82%",
+    borderRadius: "50%",
+    border: "2px solid rgba(219,179,120,0.35)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
     boxSizing: "border-box",
   },
-  empty: {
-    padding: "20px 12px",
-    textAlign: "center",
-    color: "#666",
-    background: "#fafafa",
-    borderRadius: 12,
+  wheelEmoji: {
+    fontSize: 70,
+    lineHeight: 1,
+    marginBottom: 14,
+    transition: "transform 0.2s ease",
   },
-  list: {
-    display: "grid",
-    gap: 14,
+  wheelEmojiSpinning: {
+    transform: "scale(1.08)",
   },
-  inlineBlock: {
-    display: "grid",
-    gap: 10,
+  wheelText: {
+    color: "#c83a1f",
+    fontSize: 34,
+    fontWeight: 900,
+    lineHeight: 1.2,
+    wordBreak: "break-word",
+    transition: "transform 0.2s ease",
   },
-  listItemWrapWarm: {
-    display: "grid",
-    gridTemplateColumns: "1fr 82px",
-    gap: 0,
-    border: "1px solid #ecdac7",
-    borderRadius: 18,
-    background: "#fbf7ef",
-    overflow: "hidden",
+  wheelTextSpinning: {
+    transform: "scale(1.06)",
   },
-  listItemWrapActive: {
-    border: "1px solid #d46b2c",
-    background: "#fffaf5",
-  },
-  listItemButton: {
-    border: "none",
-    background: "transparent",
-    textAlign: "left",
-    padding: 16,
-    cursor: "pointer",
+  drawButton: {
     width: "100%",
+    maxWidth: 460,
+    minHeight: 78,
+    borderRadius: 40,
+    border: "3px solid #d08e1d",
+    background: "linear-gradient(135deg, #d84421 0%, #a61712 100%)",
+    color: "#fff",
+    fontSize: 26,
+    fontWeight: 900,
+    letterSpacing: "0.08em",
+    cursor: "pointer",
+    boxShadow: "0 10px 20px rgba(173,46,25,0.14)",
   },
-  itemTopRowMobile: {
+  drawButtonDisabled: {
+    opacity: 0.6,
+    cursor: "not-allowed",
+  },
+  tip: {
+    marginTop: 18,
+    color: "#b7a18f",
+    fontSize: 16,
+  },
+  errorBox: {
+    marginTop: 18,
+    background: "#fff1ef",
+    color: "#b42318",
+    border: "1px solid #f2c4bf",
+    borderRadius: 18,
+    padding: "14px 16px",
+  },
+  noticeBox: {
+    marginTop: 18,
+    background: "#fff7eb",
+    color: "#8c5b1c",
+    border: "1px solid #f0c98e",
+    borderRadius: 18,
+    padding: "14px 16px",
+    lineHeight: 1.7,
+  },
+  resultCard: {
+    maxWidth: 560,
+    margin: "24px auto 0",
+    background: "#fff",
+    borderRadius: 28,
+    padding: "22px 18px",
+    boxShadow: "0 10px 26px rgba(0,0,0,0.06)",
+  },
+  resultBadge: {
+    display: "inline-block",
+    padding: "8px 16px",
+    borderRadius: 999,
+    background: "#fff1e8",
+    color: "#b63317",
+    fontWeight: 900,
+    marginBottom: 10,
+  },
+  resultActivity: {
+    color: "#8b1a0a",
+    fontWeight: 800,
+    fontSize: 18,
+    marginBottom: 8,
+  },
+  resultPrize: {
+    color: "#c83a1f",
+    fontSize: 36,
+    fontWeight: 900,
+    lineHeight: 1.2,
+    marginBottom: 16,
+  },
+  resultNoteBox: {
+    background: "#faf7f2",
+    border: "1px solid #eee0d1",
+    borderRadius: 18,
+    padding: 14,
+    textAlign: "left",
+    marginBottom: 14,
+  },
+  resultDateBox: {
+    background: "#fffaf1",
+    border: "1px solid #f1ddb3",
+    borderRadius: 18,
+    padding: 14,
+  },
+  resultLabel: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#8b1a0a",
+    marginBottom: 8,
+  },
+  resultNote: {
+    color: "#5c4f48",
+    lineHeight: 1.8,
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+  },
+  resultDate: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#6d4b1e",
+    lineHeight: 1.8,
+  },
+  tableCard: {
+    maxWidth: 700,
+    margin: "28px auto 0",
+    background: "#fff",
+    borderRadius: 24,
+    overflow: "hidden",
+    boxShadow: "0 8px 22px rgba(0,0,0,0.05)",
+  },
+  tableHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+    padding: "16px 18px",
+    borderBottom: "1px solid #f1e3d6",
+    color: "#d1421f",
+    fontWeight: 900,
+    fontSize: 18,
+  },
+  emptyBox: {
+    padding: "26px 18px",
+    color: "#888",
+  },
+  prizeList: {
+    display: "grid",
+  },
+  prizeRow: {
     display: "flex",
     justifyContent: "space-between",
     gap: 12,
     alignItems: "flex-start",
+    padding: "16px 18px",
+    borderBottom: "1px solid #f7eee7",
   },
-  itemMainInfo: {
+  prizeRowLeft: {
     minWidth: 0,
     flex: 1,
+    textAlign: "left",
   },
-  itemRightInfo: {
-    textAlign: "right",
-    minWidth: 72,
-  },
-  itemTapHint: {
-    marginTop: 8,
-    fontSize: 12,
-    color: "#9a8f87",
-  },
-  itemSubRowStack: {
-    display: "grid",
-    gap: 4,
-    color: "#76675e",
-    fontSize: 14,
-    marginTop: 8,
-  },
-  itemSubRowStackLight: {
-    display: "grid",
-    gap: 4,
-    color: "#9a8f87",
-    fontSize: 12,
-    marginTop: 8,
-    lineHeight: 1.5,
-  },
-  sideActions: {
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    gap: 8,
-    padding: 10,
-    borderLeft: "1px solid #eee3d7",
-    background: "#f7f2ea",
-  },
-  sortButton: {
-    width: 46,
-    height: 40,
-    borderRadius: 12,
-    border: "1px solid #ddd",
-    background: "#fff",
-    cursor: "pointer",
-    fontSize: 20,
-    fontWeight: 700,
-  },
-  deleteMiniButton: {
-    width: 46,
-    height: 40,
-    borderRadius: 12,
-    border: "none",
-    background: "#d32f2f",
-    color: "#fff",
-    cursor: "pointer",
-    fontSize: 16,
-    fontWeight: 800,
-  },
-  itemName: {
-    fontSize: 18,
-    fontWeight: 800,
+  prizeName: {
     color: "#2f2826",
-    lineHeight: 1.35,
+    fontWeight: 800,
+    fontSize: 16,
+    lineHeight: 1.5,
     wordBreak: "break-word",
   },
-  itemRate: {
-    fontSize: 18,
-    fontWeight: 800,
+  prizeNote: {
+    marginTop: 6,
+    color: "#8a7f78",
+    fontSize: 13,
+    lineHeight: 1.6,
+    wordBreak: "break-word",
+  },
+  prizeRate: {
     color: "#9d6a2d",
+    fontWeight: 900,
     whiteSpace: "nowrap",
   },
-  inlineEditorCard: {
-    background: "#fff",
-    border: "1px solid #ecdac7",
-    borderRadius: 18,
-    padding: 14,
-    boxShadow: "0 4px 10px rgba(0,0,0,0.04)",
+  adminLinkWrap: {
+    marginTop: 28,
   },
-  inlineEditorTitle: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#3d3330",
-    marginBottom: 14,
-  },
-  formGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: 12,
-  },
-  fieldWrap: {
-    marginBottom: 2,
-  },
-  label: {
-    marginBottom: 8,
-    fontSize: 14,
+  adminLink: {
+    color: "#b55a38",
+    textDecoration: "none",
     fontWeight: 700,
-    color: "#544843",
-  },
-  input: {
-    width: "100%",
-    minHeight: 48,
-    borderRadius: 14,
-    border: "1px solid #ddd",
-    padding: "0 12px",
-    fontSize: 15,
-    background: "#fff",
-    boxSizing: "border-box",
-  },
-  textarea: {
-    width: "100%",
-    borderRadius: 14,
-    border: "1px solid #ddd",
-    padding: 12,
-    fontSize: 15,
-    resize: "vertical",
-    background: "#fff",
-    boxSizing: "border-box",
-  },
-  actionRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: 10,
-    marginTop: 18,
-  },
-  primaryButton: {
-    minHeight: 48,
-    border: "none",
-    borderRadius: 14,
-    fontSize: 16,
-    fontWeight: 700,
-    background: "#111",
-    color: "#fff",
-    cursor: "pointer",
-    width: "100%",
-  },
-  secondaryButton: {
-    minHeight: 48,
-    border: "1px solid #ddd",
-    borderRadius: 14,
-    fontSize: 16,
-    fontWeight: 700,
-    background: "#fff",
-    color: "#111",
-    cursor: "pointer",
-    width: "100%",
-  },
-  headerOutlineButton: {
-    minHeight: 40,
-    padding: "0 14px",
-    borderRadius: 12,
-    border: "1px solid #ebc9bb",
-    background: "#fff7f3",
-    color: "#c43f1e",
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-  headerSolidButton: {
-    minHeight: 40,
-    padding: "0 14px",
-    borderRadius: 12,
-    border: "none",
-    background: "#d1421f",
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
   },
 };

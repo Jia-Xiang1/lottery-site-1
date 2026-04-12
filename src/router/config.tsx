@@ -1,7 +1,7 @@
 import type { RouteObject } from "react-router-dom";
-import NotFound from "../pages/NotFound";
 import Home from "../pages/home/page";
 import AdminPage from "../pages/admin/page";
+import NotFound from "../pages/NotFound";
 
 const routes: RouteObject[] = [
   {

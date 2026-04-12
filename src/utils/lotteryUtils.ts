@@ -1,15 +1,10 @@
-import { supabase } from "../lib/supabase";
+const SUPABASE_REST_URL =
+  "https://uhclrilrpbibgdedjlrg.supabase.co/rest/v1";
 
-export type LotteryRecord = {
-  id?: string;
-  code?: string;
-  prizeId?: string | null;
-  prizeName: string;
-  prizeEmoji?: string;
-  drawTime: string;
-  redeemTime?: string | null;
-  note?: string;
-};
+const SUPABASE_FUNCTIONS_URL =
+  "https://uhclrilrpbibgdedjlrg.supabase.co/functions/v1";
+
+const SUPABASE_ANON_KEY = "sb_publishable_60gSAw07rLwRY6G7nk2QvQ_nnY35AGL";
 
 export type PrizeItem = {
   id: string;
@@ -18,11 +13,10 @@ export type PrizeItem = {
   product_name: string;
   emoji: string;
   weight: number;
-  note?: string;
   is_active: boolean;
   sort_order: number;
-  created_at: string;
-  updated_at: string;
+  note?: string;
+  created_at?: string;
 };
 
 export type DrawPrizeResponse =
@@ -31,7 +25,6 @@ export type DrawPrizeResponse =
       locked: false;
       record: {
         id?: string;
-        code?: string;
         prize_id: string;
         prize_name: string;
         prize_emoji: string;
@@ -55,7 +48,6 @@ export type DrawPrizeResponse =
       message: string;
       record?: {
         id?: string;
-        code?: string;
         prize_id: string;
         prize_name: string;
         prize_emoji: string;
@@ -71,7 +63,6 @@ export type CurrentPrizeResponse =
       status: "active";
       record: {
         id?: string;
-        code?: string;
         prize_id: string;
         prize_name: string;
         prize_emoji: string;
@@ -84,7 +75,6 @@ export type CurrentPrizeResponse =
       status: "expired";
       record: {
         id?: string;
-        code?: string;
         prize_id: string;
         prize_name: string;
         prize_emoji: string;
@@ -94,34 +84,38 @@ export type CurrentPrizeResponse =
       expiredAt: string;
     };
 
+function authHeaders(extra?: Record<string, string>) {
+  return {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    ...extra,
+  };
+}
+
 function normalizePrize(row: any): PrizeItem {
   return {
-    id: String(row.id),
-    name: row.name ?? `${row.category_name ?? ""} ${row.product_name ?? ""}`.trim(),
+    ...row,
     category_name: row.category_name ?? "",
     product_name: row.product_name ?? "",
     emoji: row.emoji ?? "🎁",
     weight: Number(row.weight ?? 0),
-    note: row.note ?? "",
     is_active: Boolean(row.is_active),
     sort_order: Number(row.sort_order ?? 0),
-    created_at: row.created_at ?? "",
-    updated_at: row.updated_at ?? "",
+    note: row.note ?? "",
   };
 }
 
 export async function getAllPrizes(includeInactive = true): Promise<PrizeItem[]> {
-  let query = supabase
-    .from("prizes")
-    .select("*")
-    .order("sort_order", { ascending: true });
+  const query = includeInactive
+    ? "select=*&order=sort_order.asc"
+    : "select=*&is_active=eq.true&order=sort_order.asc";
 
-  if (!includeInactive) {
-    query = query.eq("is_active", true);
-  }
+  const res = await fetch(`${SUPABASE_REST_URL}/prizes?${query}`, {
+    headers: authHeaders(),
+  });
 
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.message || data?.error || "讀取獎項失敗");
 
   return (data ?? []).map(normalizePrize);
 }
@@ -134,25 +128,29 @@ export async function addPrize(input: {
   sort_order?: number;
   note?: string;
 }) {
-  const name = `${input.category_name} ${input.product_name}`.trim();
+  const payload = {
+    name: `${input.category_name} ${input.product_name}`.trim(),
+    category_name: input.category_name,
+    product_name: input.product_name,
+    emoji: input.emoji || "🎁",
+    weight: Number(input.weight || 0),
+    sort_order: Number(input.sort_order ?? 0),
+    is_active: true,
+    note: input.note ?? "",
+  };
 
-  const { data, error } = await supabase
-    .from("prizes")
-    .insert({
-      name,
-      category_name: input.category_name,
-      product_name: input.product_name,
-      emoji: input.emoji || "🎁",
-      weight: Number(input.weight),
-      sort_order: Number(input.sort_order ?? 0),
-      note: input.note ?? "",
-      is_active: true,
-    })
-    .select("*")
-    .single();
+  const res = await fetch(`${SUPABASE_REST_URL}/prizes`, {
+    method: "POST",
+    headers: authHeaders({
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    }),
+    body: JSON.stringify(payload),
+  });
 
-  if (error) throw new Error(error.message);
-  return normalizePrize(data);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.message || data?.error || "新增品項失敗");
+  return Array.isArray(data) ? data[0] : data;
 }
 
 export async function updatePrize(
@@ -162,88 +160,95 @@ export async function updatePrize(
     product_name: string;
     emoji: string;
     weight: number;
-    note: string;
     is_active: boolean;
     sort_order: number;
+    note: string;
   }>
 ) {
   const payload: Record<string, unknown> = { ...input };
 
-  if (payload.weight !== undefined) {
-    payload.weight = Number(payload.weight);
-  }
+  if (payload.weight !== undefined) payload.weight = Number(payload.weight);
+  if (payload.sort_order !== undefined) payload.sort_order = Number(payload.sort_order);
 
-  if (payload.sort_order !== undefined) {
-    payload.sort_order = Number(payload.sort_order);
-  }
+  if (payload.category_name !== undefined || payload.product_name !== undefined) {
+    const currentRes = await fetch(
+      `${SUPABASE_REST_URL}/prizes?id=eq.${id}&select=category_name,product_name`,
+      { headers: authHeaders() }
+    );
+    const currentData = await currentRes.json();
+    if (!currentRes.ok) {
+      throw new Error(currentData?.message || currentData?.error || "讀取原始資料失敗");
+    }
 
-  const categoryName =
-    typeof payload.category_name === "string" ? payload.category_name : undefined;
-  const productName =
-    typeof payload.product_name === "string" ? payload.product_name : undefined;
-
-  if (categoryName !== undefined || productName !== undefined) {
-    const { data: current, error: readError } = await supabase
-      .from("prizes")
-      .select("category_name, product_name")
-      .eq("id", id)
-      .single();
-
-    if (readError) throw new Error(readError.message);
-
-    const finalCategory = categoryName ?? current.category_name ?? "";
-    const finalProduct = productName ?? current.product_name ?? "";
+    const current = Array.isArray(currentData) ? currentData[0] : currentData;
+    const finalCategory =
+      typeof payload.category_name === "string"
+        ? payload.category_name
+        : current?.category_name ?? "";
+    const finalProduct =
+      typeof payload.product_name === "string"
+        ? payload.product_name
+        : current?.product_name ?? "";
 
     payload.name = `${finalCategory} ${finalProduct}`.trim();
     payload.category_name = finalCategory;
     payload.product_name = finalProduct;
   }
 
-  const { data, error } = await supabase
-    .from("prizes")
-    .update(payload)
-    .eq("id", id)
-    .select("*")
-    .single();
+  const res = await fetch(`${SUPABASE_REST_URL}/prizes?id=eq.${id}`, {
+    method: "PATCH",
+    headers: authHeaders({
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+    }),
+    body: JSON.stringify(payload),
+  });
 
-  if (error) throw new Error(error.message);
-  return normalizePrize(data);
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.message || data?.error || "更新失敗");
+  return Array.isArray(data) ? data[0] : data;
 }
 
 export async function deletePrize(id: string) {
-  const { error } = await supabase.from("prizes").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  const res = await fetch(`${SUPABASE_REST_URL}/prizes?id=eq.${id}`, {
+    method: "DELETE",
+    headers: authHeaders({
+      Prefer: "return=minimal",
+    }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.message || data?.error || "刪除失敗");
+  }
+
   return true;
 }
 
 export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
-  const { data, error } = await supabase.functions.invoke("draw-lottery", {
-    body: {},
+  const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/draw-lottery`, {
+    method: "POST",
+    headers: authHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({}),
   });
 
-  if (error) {
-    throw new Error(error.message || "抽獎失敗");
-  }
-
-  if (!data) {
-    throw new Error("抽獎失敗，未取得結果");
-  }
-
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || data?.message || "抽獎失敗");
   return data as DrawPrizeResponse;
 }
 
 export async function getCurrentPrize(): Promise<CurrentPrizeResponse> {
-  const { data, error } = await supabase.functions.invoke("get-current-prize", {
-    body: {},
+  const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/get-current-prize`, {
+    method: "POST",
+    headers: authHeaders({
+      "Content-Type": "application/json",
+    }),
+    body: JSON.stringify({}),
   });
 
-  if (error) {
-    throw new Error(error.message || "讀取抽獎狀態失敗");
-  }
-
-  if (!data) {
-    throw new Error("讀取抽獎狀態失敗");
-  }
-
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || data?.message || "讀取目前獎項失敗");
   return data as CurrentPrizeResponse;
 }

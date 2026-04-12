@@ -76,22 +76,26 @@ export default function AdminPage() {
       const text = [item.品項名稱, item.活動名稱, item.商品名稱, item.備註]
         .map((v) => String(v || "").toLowerCase())
         .join(" ");
-
       return text.includes(kw);
     });
   }, [items, keyword]);
 
   const totalRate = useMemo(() => {
     return items.reduce((sum, item) => {
+      const enabled =
+        item.啟用 === true ||
+        String(item.啟用).toLowerCase() === "true" ||
+        String(item.啟用) === "1";
+
+      if (!enabled) return sum;
+
       const n = Number(item.機率 || 0);
       return sum + (isNaN(n) ? 0 : n);
     }, 0);
   }, [items]);
 
   useEffect(() => {
-    if (isUnlocked) {
-      void fetchPrizeConfigs();
-    }
+    if (isUnlocked) void fetchPrizeConfigs();
   }, [isUnlocked]);
 
   useEffect(() => {
@@ -172,7 +176,6 @@ export default function AdminPage() {
       alert("請輸入活動名稱");
       return false;
     }
-
     if (!form.productName.trim()) {
       alert("請輸入品項名稱");
       return false;
@@ -255,11 +258,7 @@ export default function AdminPage() {
     try {
       await deletePrize(targetId);
       alert("刪除成功");
-
-      if (String(targetId) === String(selectedId)) {
-        resetEditor();
-      }
-
+      if (String(targetId) === String(selectedId)) resetEditor();
       await fetchPrizeConfigs();
     } catch (err) {
       console.error(err);
@@ -308,7 +307,6 @@ export default function AdminPage() {
               <div style={styles.headerTitleRow}>
                 <h1 style={styles.brandTitle}>後台管理系統</h1>
               </div>
-
               <button
                 type="button"
                 style={styles.headerOutlineButton}
@@ -570,9 +568,7 @@ function EditorForm({
           <input
             style={styles.input}
             value={form.category}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, category: e.target.value }))
-            }
+            onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
           />
         </Field>
 
@@ -580,9 +576,7 @@ function EditorForm({
           <input
             style={styles.input}
             value={form.productName}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, productName: e.target.value }))
-            }
+            onChange={(e) => setForm((p) => ({ ...p, productName: e.target.value }))}
           />
         </Field>
 
@@ -590,9 +584,7 @@ function EditorForm({
           <input
             style={styles.input}
             value={form.emoji}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, emoji: e.target.value }))
-            }
+            onChange={(e) => setForm((p) => ({ ...p, emoji: e.target.value }))}
           />
         </Field>
 
@@ -602,9 +594,7 @@ function EditorForm({
             type="number"
             step="0.1"
             value={form.rate}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, rate: e.target.value }))
-            }
+            onChange={(e) => setForm((p) => ({ ...p, rate: e.target.value }))}
           />
         </Field>
 
@@ -802,229 +792,4 @@ const styles: Record<string, React.CSSProperties> = {
     margin: "0 0 14px",
     fontSize: 20,
     fontWeight: 800,
-    color: "#3d3330",
-  },
-  searchWrap: {
-    marginBottom: 14,
-  },
-  searchInput: {
-    width: "100%",
-    minHeight: 50,
-    borderRadius: 16,
-    border: "1px solid #ead5ca",
-    padding: "0 14px",
-    fontSize: 15,
-    background: "#fff",
-    boxSizing: "border-box",
-  },
-  empty: {
-    padding: "20px 12px",
-    textAlign: "center",
-    color: "#666",
-    background: "#fafafa",
-    borderRadius: 12,
-  },
-  list: {
-    display: "grid",
-    gap: 14,
-  },
-  inlineBlock: {
-    display: "grid",
-    gap: 10,
-  },
-  listItemWrapWarm: {
-    display: "grid",
-    gridTemplateColumns: "1fr 82px",
-    gap: 0,
-    border: "1px solid #ecdac7",
-    borderRadius: 18,
-    background: "#fbf7ef",
-    overflow: "hidden",
-  },
-  listItemWrapActive: {
-    border: "1px solid #d46b2c",
-    background: "#fffaf5",
-  },
-  listItemButton: {
-    border: "none",
-    background: "transparent",
-    textAlign: "left",
-    padding: 16,
-    cursor: "pointer",
-    width: "100%",
-  },
-  itemTopRowMobile: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    alignItems: "flex-start",
-  },
-  itemMainInfo: {
-    minWidth: 0,
-    flex: 1,
-  },
-  itemRightInfo: {
-    textAlign: "right",
-    minWidth: 72,
-  },
-  itemTapHint: {
-    marginTop: 8,
-    fontSize: 12,
-    color: "#9a8f87",
-  },
-  itemSubRowStack: {
-    display: "grid",
-    gap: 4,
-    color: "#76675e",
-    fontSize: 14,
-    marginTop: 8,
-  },
-  itemSubRowStackLight: {
-    display: "grid",
-    gap: 4,
-    color: "#9a8f87",
-    fontSize: 12,
-    marginTop: 8,
-    lineHeight: 1.5,
-  },
-  sideActions: {
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    gap: 8,
-    padding: 10,
-    borderLeft: "1px solid #eee3d7",
-    background: "#f7f2ea",
-  },
-  sortButton: {
-    width: 46,
-    height: 40,
-    borderRadius: 12,
-    border: "1px solid #ddd",
-    background: "#fff",
-    cursor: "pointer",
-    fontSize: 20,
-    fontWeight: 700,
-  },
-  deleteMiniButton: {
-    width: 46,
-    height: 40,
-    borderRadius: 12,
-    border: "none",
-    background: "#d32f2f",
-    color: "#fff",
-    cursor: "pointer",
-    fontSize: 16,
-    fontWeight: 800,
-  },
-  itemName: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#2f2826",
-    lineHeight: 1.35,
-    wordBreak: "break-word",
-  },
-  itemRate: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#9d6a2d",
-    whiteSpace: "nowrap",
-  },
-  inlineEditorCard: {
-    background: "#fff",
-    border: "1px solid #ecdac7",
-    borderRadius: 18,
-    padding: 14,
-    boxShadow: "0 4px 10px rgba(0,0,0,0.04)",
-  },
-  inlineEditorTitle: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#3d3330",
-    marginBottom: 14,
-  },
-  formGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: 12,
-  },
-  fieldWrap: {
-    marginBottom: 2,
-  },
-  label: {
-    marginBottom: 8,
-    fontSize: 14,
-    fontWeight: 700,
-    color: "#544843",
-  },
-  input: {
-    width: "100%",
-    minHeight: 48,
-    borderRadius: 14,
-    border: "1px solid #ddd",
-    padding: "0 12px",
-    fontSize: 15,
-    background: "#fff",
-    boxSizing: "border-box",
-  },
-  textarea: {
-    width: "100%",
-    borderRadius: 14,
-    border: "1px solid #ddd",
-    padding: 12,
-    fontSize: 15,
-    resize: "vertical",
-    background: "#fff",
-    boxSizing: "border-box",
-  },
-  actionRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: 10,
-    marginTop: 18,
-  },
-  primaryButton: {
-    minHeight: 48,
-    border: "none",
-    borderRadius: 14,
-    fontSize: 16,
-    fontWeight: 700,
-    background: "#111",
-    color: "#fff",
-    cursor: "pointer",
-    width: "100%",
-  },
-  secondaryButton: {
-    minHeight: 48,
-    border: "1px solid #ddd",
-    borderRadius: 14,
-    fontSize: 16,
-    fontWeight: 700,
-    background: "#fff",
-    color: "#111",
-    cursor: "pointer",
-    width: "100%",
-  },
-  headerOutlineButton: {
-    minHeight: 40,
-    padding: "0 14px",
-    borderRadius: 12,
-    border: "1px solid #ebc9bb",
-    background: "#fff7f3",
-    color: "#c43f1e",
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-  headerSolidButton: {
-    minHeight: 40,
-    padding: "0 14px",
-    borderRadius: 12,
-    border: "none",
-    background: "#d1421f",
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-};
+   } }
