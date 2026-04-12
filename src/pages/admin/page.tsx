@@ -12,14 +12,10 @@ type PrizeConfig = {
   sortOrder: number | string;
   id: string;
   品項名稱: string;
-  分類: string;
+  活動名稱: string;
   商品名稱: string;
   emoji: string;
   機率: number | string;
-  couponNameCode: string;
-  啟用方式: "same_day" | "next_day" | "fixed_date";
-  指定啟用日: string;
-  有效月數: number | string;
   備註: string;
   啟用: boolean | string;
 };
@@ -32,10 +28,6 @@ const emptyForm = {
   productName: "",
   emoji: "🎁",
   rate: "0",
-  couponNameCode: "",
-  activationType: "same_day" as "same_day" | "next_day" | "fixed_date",
-  fixedActivateDate: "",
-  validMonths: "1",
   note: "",
   enabled: true,
 };
@@ -45,17 +37,10 @@ function toPrizeConfig(item: PrizeItem): PrizeConfig {
     sortOrder: item.sort_order,
     id: item.id,
     品項名稱: `${item.category_name ?? ""} ${item.product_name ?? ""}`.trim(),
-    分類: item.category_name ?? "",
+    活動名稱: item.category_name ?? "",
     商品名稱: item.product_name ?? "",
     emoji: item.emoji ?? "🎁",
     機率: Number(item.weight ?? 0),
-    couponNameCode: item.coupon_name_code ?? "",
-    啟用方式: (item.activation_type ?? "same_day") as
-      | "same_day"
-      | "next_day"
-      | "fixed_date",
-    指定啟用日: item.fixed_activate_date ?? "",
-    有效月數: Number(item.valid_months ?? 1),
     備註: item.note ?? "",
     啟用: Boolean(item.is_active),
   };
@@ -88,7 +73,7 @@ export default function AdminPage() {
     if (!kw) return items;
 
     return items.filter((item) => {
-      const text = [item.品項名稱, item.分類, item.商品名稱, item.couponNameCode]
+      const text = [item.品項名稱, item.活動名稱, item.商品名稱, item.備註]
         .map((v) => String(v || "").toLowerCase())
         .join(" ");
 
@@ -105,7 +90,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (isUnlocked) {
-      fetchPrizeConfigs();
+      void fetchPrizeConfigs();
     }
   }, [isUnlocked]);
 
@@ -114,16 +99,10 @@ export default function AdminPage() {
 
     setForm({
       id: String(selectedItem.id || ""),
-      category: String(selectedItem.分類 || ""),
+      category: String(selectedItem.活動名稱 || ""),
       productName: String(selectedItem.商品名稱 || ""),
       emoji: String(selectedItem.emoji || "🎁"),
       rate: String(selectedItem.機率 ?? "0"),
-      couponNameCode: String(selectedItem.couponNameCode || ""),
-      activationType:
-        (selectedItem.啟用方式 as "same_day" | "next_day" | "fixed_date") ||
-        "same_day",
-      fixedActivateDate: normalizeDateInput(selectedItem.指定啟用日 || ""),
-      validMonths: String(selectedItem.有效月數 ?? "1"),
       note: String(selectedItem.備註 || ""),
       enabled:
         selectedItem.啟用 === true ||
@@ -190,34 +169,18 @@ export default function AdminPage() {
 
   function validateForm() {
     if (!form.category.trim()) {
-      alert("請輸入分類");
+      alert("請輸入活動名稱");
       return false;
     }
 
     if (!form.productName.trim()) {
-      alert("請輸入商品名稱");
-      return false;
-    }
-
-    if (!form.couponNameCode.trim()) {
-      alert("請輸入 couponNameCode");
+      alert("請輸入品項名稱");
       return false;
     }
 
     const rate = Number(form.rate);
     if (isNaN(rate) || rate < 0) {
       alert("機率格式錯誤");
-      return false;
-    }
-
-    const validMonths = Number(form.validMonths);
-    if (isNaN(validMonths) || validMonths < 0) {
-      alert("有效月數格式錯誤");
-      return false;
-    }
-
-    if (form.activationType === "fixed_date" && !form.fixedActivateDate) {
-      alert("請選擇指定啟用日");
       return false;
     }
 
@@ -239,11 +202,6 @@ export default function AdminPage() {
         emoji: form.emoji || "🎁",
         weight: Number(form.rate),
         sort_order: sortOrder,
-        coupon_name_code: form.couponNameCode,
-        activation_type: form.activationType,
-        fixed_activate_date:
-          form.activationType === "fixed_date" ? form.fixedActivateDate : null,
-        valid_months: Number(form.validMonths),
         note: form.note,
       });
 
@@ -270,11 +228,6 @@ export default function AdminPage() {
         emoji: form.emoji || "🎁",
         weight: Number(form.rate),
         is_active: form.enabled,
-        coupon_name_code: form.couponNameCode,
-        activation_type: form.activationType,
-        fixed_activate_date:
-          form.activationType === "fixed_date" ? form.fixedActivateDate : null,
-        valid_months: Number(form.validMonths),
         note: form.note,
       });
 
@@ -468,7 +421,6 @@ export default function AdminPage() {
                     resetEditor();
                     setShowCreateBox(false);
                   }}
-                  onDelete={() => handleDelete()}
                   onSave={handleSave}
                   onCreate={handleCreate}
                 />
@@ -482,7 +434,7 @@ export default function AdminPage() {
                 style={styles.searchInput}
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
-                placeholder="搜尋品項名稱 / 分類 / 商品名稱 / couponNameCode"
+                placeholder="搜尋活動名稱 / 品項名稱 / 備註"
               />
             </div>
 
@@ -519,12 +471,13 @@ export default function AdminPage() {
                               </div>
 
                               <div style={styles.itemSubRowStack}>
-                                <span>{item.分類 || "未分類"}</span>
-                                <span>{item.couponNameCode || "-"}</span>
+                                <span>活動：{item.活動名稱 || "未設定"}</span>
+                                <span>品項：{item.商品名稱 || "未設定"}</span>
                               </div>
 
                               <div style={styles.itemSubRowStackLight}>
                                 <span>{enabled ? "啟用中" : "未啟用"}</span>
+                                {!!item.備註 && <span>備註：{item.備註}</span>}
                               </div>
                             </div>
 
@@ -576,7 +529,6 @@ export default function AdminPage() {
                             saving={saving}
                             isCreating={false}
                             onCancel={resetEditor}
-                            onDelete={() => handleDelete()}
                             onSave={handleSave}
                             onCreate={handleCreate}
                           />
@@ -600,7 +552,6 @@ function EditorForm({
   saving,
   isCreating,
   onCancel,
-  onDelete,
   onSave,
   onCreate,
 }: {
@@ -609,14 +560,13 @@ function EditorForm({
   saving: boolean;
   isCreating: boolean;
   onCancel: () => void;
-  onDelete: () => void;
   onSave: () => void;
   onCreate: () => void;
 }) {
   return (
     <>
       <div style={styles.formGrid}>
-        <Field label="分類">
+        <Field label="活動名稱">
           <input
             style={styles.input}
             value={form.category}
@@ -626,7 +576,7 @@ function EditorForm({
           />
         </Field>
 
-        <Field label="商品名稱">
+        <Field label="品項名稱">
           <input
             style={styles.input}
             value={form.productName}
@@ -658,73 +608,6 @@ function EditorForm({
           />
         </Field>
 
-        <Field label="couponNameCode">
-          <input
-            style={styles.input}
-            value={form.couponNameCode}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, couponNameCode: e.target.value }))
-            }
-            placeholder="例如：E01"
-          />
-        </Field>
-
-        <Field label="啟用方式">
-          <select
-            style={styles.input}
-            value={form.activationType}
-            onChange={(e) =>
-              setForm((p) => ({
-                ...p,
-                activationType: e.target.value as
-                  | "same_day"
-                  | "next_day"
-                  | "fixed_date",
-              }))
-            }
-          >
-            <option value="same_day">當天使用</option>
-            <option value="next_day">隔天使用</option>
-            <option value="fixed_date">指定日期使用</option>
-          </select>
-        </Field>
-
-        <Field label="指定啟用日">
-          <input
-            style={{
-              ...styles.input,
-              ...styles.dateInput,
-              opacity: form.activationType === "fixed_date" ? 1 : 0.55,
-            }}
-            type="date"
-            disabled={form.activationType !== "fixed_date"}
-            value={form.fixedActivateDate}
-            onChange={(e) =>
-              setForm((p) => ({
-                ...p,
-                fixedActivateDate: e.target.value,
-              }))
-            }
-          />
-        </Field>
-
-        <Field label="有效月數">
-          <select
-            style={styles.input}
-            value={form.validMonths}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, validMonths: e.target.value }))
-            }
-          >
-            <option value="0">0 個月（當日）</option>
-            <option value="1">1 個月</option>
-            <option value="2">2 個月</option>
-            <option value="3">3 個月</option>
-            <option value="6">6 個月</option>
-            <option value="12">12 個月</option>
-          </select>
-        </Field>
-
         <Field label="是否啟用">
           <select
             style={styles.input}
@@ -748,7 +631,7 @@ function EditorForm({
           rows={4}
           value={form.note}
           onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))}
-          placeholder="例如：限內用、不得與其他優惠併用、僅限平日使用、需提前出示..."
+          placeholder="例如：限內用、不得與其他優惠併用、有效期限為抽中後 1 個月..."
         />
       </Field>
 
@@ -773,13 +656,13 @@ function EditorForm({
           </button>
         ) : (
           <button
-              type="button"
-              style={styles.primaryButton}
-              onClick={onSave}
-              disabled={saving}
-            >
-              {saving ? "儲存中..." : "儲存設定"}
-            </button>
+            type="button"
+            style={styles.primaryButton}
+            onClick={onSave}
+            disabled={saving}
+          >
+            {saving ? "儲存中..." : "儲存設定"}
+          </button>
         )}
       </div>
     </>
@@ -799,18 +682,6 @@ function Field({
       {children}
     </div>
   );
-}
-
-function normalizeDateInput(v: string) {
-  if (!v) return "";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return "";
-
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 function roundRate(value: number) {
@@ -1096,13 +967,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#fff",
     boxSizing: "border-box",
   },
-  dateInput: {
-    appearance: "none",
-    WebkitAppearance: "none",
-    minHeight: 48,
-    lineHeight: "48px",
-    paddingRight: 12,
-  },
   textarea: {
     width: "100%",
     borderRadius: 14,
@@ -1138,17 +1002,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     background: "#fff",
     color: "#111",
-    cursor: "pointer",
-    width: "100%",
-  },
-  dangerButton: {
-    minHeight: 48,
-    border: "none",
-    borderRadius: 14,
-    fontSize: 16,
-    fontWeight: 700,
-    background: "#d32f2f",
-    color: "#fff",
     cursor: "pointer",
     width: "100%",
   },

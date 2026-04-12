@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
         locked: true,
         message: '2 小時內無法重複抽取',
         record: existingRecord,
-        expiresAt: existingRecord.view_expires_at,
+        expiresAt: existingRecord.view_expires_at || expiresAt,
       });
     }
 
@@ -91,28 +91,38 @@ Deno.serve(async (req) => {
       return json({ error: '沒有可用獎項' }, 400);
     }
 
-    const total = prizes.reduce((sum, p) => sum + Number(p.weight), 0);
-    if (total <= 0) {
+    const normalizedPrizes = prizes.map((p) => ({
+      ...p,
+      weight: Number(p.weight || 0),
+      category_name: String(p.category_name || '').trim(),
+      product_name: String(p.product_name || '').trim(),
+      note: String(p.note || '').trim(),
+      emoji: String(p.emoji || '🎁'),
+    }));
+
+    const totalWeight = normalizedPrizes.reduce((sum, p) => sum + p.weight, 0);
+
+    if (totalWeight <= 0) {
       return json({ error: '機率總和不可為 0' }, 400);
     }
 
-    const random = Math.random() * 100;
-    let cumulative = 0;
-    let picked = prizes[prizes.length - 1];
+    let random = Math.random() * totalWeight;
+    let picked = normalizedPrizes[normalizedPrizes.length - 1];
 
-    for (const p of prizes) {
-      cumulative += Number(p.weight);
-      if (random <= cumulative) {
-        picked = p;
+    for (const prize of normalizedPrizes) {
+      random -= prize.weight;
+      if (random <= 0) {
+        picked = prize;
         break;
       }
     }
 
-    const code = Math.floor(10000000 + Math.random() * 90000000).toString();
-    const prizeName = buildPrizeName(picked.category_name ?? '', picked.product_name ?? '');
+    const prizeName = buildPrizeName(
+      picked.category_name ?? '',
+      picked.product_name ?? ''
+    );
 
     const insertPayload = {
-      code,
       prize_id: picked.id,
       prize_name: prizeName,
       prize_emoji: picked.emoji,
@@ -142,7 +152,8 @@ Deno.serve(async (req) => {
         category_name: picked.category_name,
         product_name: picked.product_name,
         emoji: picked.emoji,
-        probability: Number(picked.weight),
+        probability: picked.weight,
+        note: picked.note,
       },
     });
   } catch (error) {
