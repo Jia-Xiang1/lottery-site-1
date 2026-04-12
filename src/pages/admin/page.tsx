@@ -1,795 +1,271 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  addPrize,
-  deletePrize,
-  getAllPrizes,
-  updatePrize,
+  createPrizeItem,
+  deletePrizeItem,
+  getPrizeList,
+  savePrizeList,
   type PrizeItem,
-} from "../../utils/lotteryUtils";
-
-type PrizeConfig = {
-  sortOrder: number | string;
-  id: string;
-  品項名稱: string;
-  活動名稱: string;
-  商品名稱: string;
-  emoji: string;
-  機率: number | string;
-  備註: string;
-  啟用: boolean | string;
-};
-
-const ADMIN_PASSWORDS = ["riceking168", "xiang1224"];
-
-const emptyForm = {
-  id: "",
-  category: "",
-  productName: "",
-  emoji: "🎁",
-  rate: "0",
-  note: "",
-  enabled: true,
-};
-
-function toPrizeConfig(item: PrizeItem): PrizeConfig {
-  return {
-    sortOrder: item.sort_order,
-    id: item.id,
-    品項名稱: `${item.category_name ?? ""} ${item.product_name ?? ""}`.trim(),
-    活動名稱: item.category_name ?? "",
-    商品名稱: item.product_name ?? "",
-    emoji: item.emoji ?? "🎁",
-    機率: Number(item.weight ?? 0),
-    備註: item.note ?? "",
-    啟用: Boolean(item.is_active),
-  };
-}
+} from '../../utils/lotteryUtils';
 
 export default function AdminPage() {
   const navigate = useNavigate();
-
-  const [passwordInput, setPasswordInput] = useState("");
-  const [isUnlocked, setIsUnlocked] = useState(
-    sessionStorage.getItem("admin_unlocked") === "true"
-  );
-
-  const [items, setItems] = useState<PrizeConfig[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
-  const [keyword, setKeyword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [showCreateBox, setShowCreateBox] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-
-  const selectedItem = useMemo(
-    () => items.find((item) => String(item.id) === String(selectedId)),
-    [items, selectedId]
-  );
-
-  const filteredItems = useMemo(() => {
-    const kw = keyword.trim().toLowerCase();
-    if (!kw) return items;
-
-    return items.filter((item) => {
-      const text = [item.品項名稱, item.活動名稱, item.商品名稱, item.備註]
-        .map((v) => String(v || "").toLowerCase())
-        .join(" ");
-      return text.includes(kw);
-    });
-  }, [items, keyword]);
-
-  const totalRate = useMemo(() => {
-    return items.reduce((sum, item) => {
-      const enabled =
-        item.啟用 === true ||
-        String(item.啟用).toLowerCase() === "true" ||
-        String(item.啟用) === "1";
-
-      if (!enabled) return sum;
-
-      const n = Number(item.機率 || 0);
-      return sum + (isNaN(n) ? 0 : n);
-    }, 0);
-  }, [items]);
+  const [prizes, setPrizes] = useState<PrizeItem[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isUnlocked) void fetchPrizeConfigs();
-  }, [isUnlocked]);
+    setPrizes(getPrizeList());
+  }, []);
 
-  useEffect(() => {
-    if (!selectedItem || isCreating) return;
+  const totalProbability = useMemo(() => {
+    return prizes.reduce((sum, item) => sum + Number(item.probability || 0), 0);
+  }, [prizes]);
 
-    setForm({
-      id: String(selectedItem.id || ""),
-      category: String(selectedItem.活動名稱 || ""),
-      productName: String(selectedItem.商品名稱 || ""),
-      emoji: String(selectedItem.emoji || "🎁"),
-      rate: String(selectedItem.機率 ?? "0"),
-      note: String(selectedItem.備註 || ""),
-      enabled:
-        selectedItem.啟用 === true ||
-        String(selectedItem.啟用).toLowerCase() === "true" ||
-        String(selectedItem.啟用) === "1",
-    });
-  }, [selectedItem, isCreating]);
+  const handleFieldChange = (
+    id: string,
+    key: keyof PrizeItem,
+    value: string | number,
+  ) => {
+    setPrizes((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              [key]:
+                key === 'probability'
+                  ? Number(value)
+                  : value,
+            }
+          : item,
+      ),
+    );
+  };
 
-  async function fetchPrizeConfigs() {
-    setLoading(true);
-    try {
-      const data = await getAllPrizes(true);
-      setItems(data.map(toPrizeConfig));
-    } catch (err) {
-      console.error(err);
-      alert("讀取獎項設定失敗");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const handleSaveAll = () => {
+    savePrizeList(prizes);
+    alert('已儲存獎項設定');
+  };
 
-  function handleUnlock() {
-    if (ADMIN_PASSWORDS.includes(passwordInput)) {
-      sessionStorage.setItem("admin_unlocked", "true");
-      setIsUnlocked(true);
-      setPasswordInput("");
-      return;
-    }
-    alert("密碼錯誤");
-  }
+  const handleAddPrize = () => {
+    const next = [...prizes, createPrizeItem()];
+    setPrizes(next);
+    setExpandedId(next[next.length - 1].id);
+  };
 
-  function handleLogout() {
-    sessionStorage.removeItem("admin_unlocked");
-    setIsUnlocked(false);
-    setPasswordInput("");
-    setSelectedId("");
-    setIsCreating(false);
-    setShowCreateBox(false);
-    setForm(emptyForm);
-  }
-
-  function openCreateEditor() {
-    setShowCreateBox(true);
-    setIsCreating(true);
-    setSelectedId("");
-    setForm(emptyForm);
-  }
-
-  function selectItem(id: string) {
-    if (String(selectedId) === String(id) && !isCreating) {
-      setSelectedId("");
-      return;
-    }
-    setShowCreateBox(false);
-    setIsCreating(false);
-    setSelectedId(id);
-  }
-
-  function resetEditor() {
-    setIsCreating(false);
-    setSelectedId("");
-    setForm(emptyForm);
-  }
-
-  function validateForm() {
-    if (!form.category.trim()) {
-      alert("請輸入活動名稱");
-      return false;
-    }
-    if (!form.productName.trim()) {
-      alert("請輸入品項名稱");
-      return false;
-    }
-
-    const rate = Number(form.rate);
-    if (isNaN(rate) || rate < 0) {
-      alert("機率格式錯誤");
-      return false;
-    }
-
-    return true;
-  }
-
-  async function handleCreate() {
-    if (!validateForm()) return;
-
-    setSaving(true);
-    try {
-      const sortOrder = items.length
-        ? Math.max(...items.map((i) => Number(i.sortOrder || 0))) + 1
-        : 1;
-
-      await addPrize({
-        category_name: form.category,
-        product_name: form.productName,
-        emoji: form.emoji || "🎁",
-        weight: Number(form.rate),
-        sort_order: sortOrder,
-        note: form.note,
-      });
-
-      alert("新增成功");
-      resetEditor();
-      setShowCreateBox(false);
-      await fetchPrizeConfigs();
-    } catch (err) {
-      console.error(err);
-      alert("新增失敗");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleSave() {
-    if (!validateForm() || !form.id) return;
-
-    setSaving(true);
-    try {
-      await updatePrize(form.id, {
-        category_name: form.category,
-        product_name: form.productName,
-        emoji: form.emoji || "🎁",
-        weight: Number(form.rate),
-        is_active: form.enabled,
-        note: form.note,
-      });
-
-      alert("更新成功");
-      await fetchPrizeConfigs();
-    } catch (err) {
-      console.error(err);
-      alert("更新失敗");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete(id?: string) {
-    const targetId = id || selectedId;
-    if (!targetId) {
-      alert("請先選擇品項");
-      return;
-    }
-
-    const ok = window.confirm("確定要刪除這個品項嗎？刪除後無法復原。");
+  const handleDeletePrize = (id: string, name: string) => {
+    const ok = window.confirm(`確定要刪除「${name}」嗎？`);
     if (!ok) return;
 
-    setSaving(true);
-    try {
-      await deletePrize(targetId);
-      alert("刪除成功");
-      if (String(targetId) === String(selectedId)) resetEditor();
-      await fetchPrizeConfigs();
-    } catch (err) {
-      console.error(err);
-      alert("刪除失敗");
-    } finally {
-      setSaving(false);
+    const next = prizes.filter((item) => item.id !== id);
+    setPrizes(next);
+    deletePrizeItem(id);
+
+    if (expandedId === id) {
+      setExpandedId(null);
     }
-  }
-
-  async function handleMove(direction: "up" | "down", id: string) {
-    const currentIndex = items.findIndex((item) => String(item.id) === String(id));
-    if (currentIndex === -1) return;
-
-    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= items.length) return;
-
-    const current = items[currentIndex];
-    const target = items[targetIndex];
-
-    setSaving(true);
-    try {
-      await updatePrize(String(current.id), {
-        sort_order: Number(target.sortOrder),
-      });
-
-      await updatePrize(String(target.id), {
-        sort_order: Number(current.sortOrder),
-      });
-
-      await fetchPrizeConfigs();
-    } catch (err) {
-      console.error(err);
-      alert("排序失敗");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (!isUnlocked) {
-    return (
-      <div style={styles.page}>
-        <div style={styles.topBar} />
-        <div style={styles.shell}>
-          <div style={styles.headerCard}>
-            <div style={styles.headerTop}>
-              <div style={styles.headerTitleRow}>
-                <h1 style={styles.brandTitle}>後台管理系統</h1>
-              </div>
-              <button
-                type="button"
-                style={styles.headerOutlineButton}
-                onClick={() => navigate("/")}
-              >
-                返回前台
-              </button>
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <h2 style={styles.sectionTitle}>輸入管理密碼</h2>
-
-            <div style={{ maxWidth: 420 }}>
-              <input
-                type="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleUnlock();
-                }}
-                placeholder="請輸入後台密碼"
-                style={styles.input}
-              />
-
-              <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
-                <button
-                  type="button"
-                  style={styles.secondaryButton}
-                  onClick={() => navigate("/")}
-                >
-                  返回前台
-                </button>
-
-                <button
-                  type="button"
-                  style={styles.primaryButton}
-                  onClick={handleUnlock}
-                >
-                  進入後台
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  };
 
   return (
-    <div style={styles.page}>
-      <div style={styles.topBar} />
-      <div style={styles.shell}>
-        <div style={styles.headerCard}>
-          <div style={styles.headerTop}>
-            <div style={styles.headerTitleRow}>
-              <h1 style={styles.brandTitle}>後台管理系統</h1>
+    <div
+      className="min-h-screen px-4 py-6 md:px-6"
+      style={{
+        background: '#FFFBF0',
+        fontFamily: "'Noto Serif TC', serif",
+      }}
+    >
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <div>
+            <h1 className="text-2xl font-black text-[#C9341A]">後台管理系統</h1>
+            <p className="text-sm text-[#2D1500]/50 mt-1">點擊單一獎項後可編輯細節</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="px-4 py-2 rounded-full text-sm font-bold"
+            style={{
+              background: '#FFF5F0',
+              border: '1.5px solid #C9341A55',
+              color: '#C9341A',
+            }}
+          >
+            返回前台
+          </button>
+        </div>
+
+        <div
+          className="rounded-2xl bg-white p-4 mb-4"
+          style={{ border: '1.5px solid #C9341A20' }}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-bold text-[#C9341A]">機率總和</div>
+              <div
+                className={`text-lg font-black ${
+                  totalProbability === 100 ? 'text-green-600' : 'text-red-600'
+                }`}
+              >
+                {totalProbability}%
+              </div>
+              <div className="text-xs text-[#2D1500]/55 mt-1">
+                不等於 100% 仍可運作，但建議調整
+              </div>
             </div>
 
-            <div style={styles.headerButtonGroup}>
+            <div className="flex gap-2">
               <button
                 type="button"
-                style={styles.headerOutlineButton}
-                onClick={() => navigate("/")}
+                onClick={handleAddPrize}
+                className="px-4 py-2 rounded-full text-sm font-bold text-white"
+                style={{ background: 'linear-gradient(135deg, #C9A227, #A37D10)' }}
               >
-                返回前台
+                新增品項
               </button>
-
               <button
                 type="button"
-                style={styles.headerSolidButton}
-                onClick={handleLogout}
+                onClick={handleSaveAll}
+                className="px-4 py-2 rounded-full text-sm font-bold text-white"
+                style={{ background: 'linear-gradient(135deg, #C9341A, #8B1A0A)' }}
               >
-                登出
+                儲存全部
               </button>
             </div>
           </div>
         </div>
 
-        <div style={styles.cardWarm}>
-          <div style={styles.cardWarmHeader}>
-            <span>🎯 獎項管理</span>
-            <span style={styles.rateInfo}>啟用中總機率：{roundRate(totalRate)}%</span>
-          </div>
+        <div className="space-y-4">
+          {prizes.map((item, index) => {
+            const expanded = expandedId === item.id;
 
-          <div style={styles.cardWarmBody}>
-            <div style={styles.noticeBox}>
-              提醒：建議啟用中的獎項總機率加總為 100%。
-            </div>
-
-            <div style={styles.createBox}>
-              <button
-                type="button"
-                style={styles.createToggleButton}
-                onClick={openCreateEditor}
+            return (
+              <div
+                key={item.id}
+                className="rounded-2xl bg-white overflow-hidden"
+                style={{ border: '1.5px solid #C9341A20' }}
               >
-                ＋新增品項
-              </button>
-            </div>
-
-            {isCreating && showCreateBox && (
-              <div style={styles.inlineEditorCard}>
-                <div style={styles.inlineEditorTitle}>新增品項</div>
-                <EditorForm
-                  form={form}
-                  setForm={setForm}
-                  saving={saving}
-                  isCreating={true}
-                  onCancel={() => {
-                    resetEditor();
-                    setShowCreateBox(false);
-                  }}
-                  onSave={handleSave}
-                  onCreate={handleCreate}
-                />
-              </div>
-            )}
-
-            <h2 style={styles.sectionTitle}>全部品項</h2>
-
-            <div style={styles.searchWrap}>
-              <input
-                style={styles.searchInput}
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder="搜尋活動名稱 / 品項名稱 / 備註"
-              />
-            </div>
-
-            {loading ? (
-              <div style={styles.empty}>載入中...</div>
-            ) : filteredItems.length === 0 ? (
-              <div style={styles.empty}>查無符合的品項</div>
-            ) : (
-              <div style={styles.list}>
-                {filteredItems.map((item, index) => {
-                  const active = String(item.id) === String(selectedId);
-                  const enabled =
-                    item.啟用 === true ||
-                    String(item.啟用).toLowerCase() === "true" ||
-                    String(item.啟用) === "1";
-
-                  return (
-                    <div key={item.id} style={styles.inlineBlock}>
-                      <div
-                        style={{
-                          ...styles.listItemWrapWarm,
-                          ...(active ? styles.listItemWrapActive : {}),
-                        }}
-                      >
-                        <button
-                          type="button"
-                          style={styles.listItemButton}
-                          onClick={() => selectItem(String(item.id))}
-                        >
-                          <div style={styles.itemTopRowMobile}>
-                            <div style={styles.itemMainInfo}>
-                              <div style={styles.itemName}>
-                                {item.sortOrder}. {item.品項名稱}
-                              </div>
-
-                              <div style={styles.itemSubRowStack}>
-                                <span>活動：{item.活動名稱 || "未設定"}</span>
-                                <span>品項：{item.商品名稱 || "未設定"}</span>
-                              </div>
-
-                              <div style={styles.itemSubRowStackLight}>
-                                <span>{enabled ? "啟用中" : "未啟用"}</span>
-                                {!!item.備註 && <span>備註：{item.備註}</span>}
-                              </div>
-                            </div>
-
-                            <div style={styles.itemRightInfo}>
-                              <div style={styles.itemRate}>
-                                {roundRate(Number(item.機率 || 0))}%
-                              </div>
-                              <div style={styles.itemTapHint}>
-                                {active ? "收起" : "點擊編輯"}
-                              </div>
-                            </div>
-                          </div>
-                        </button>
-
-                        <div style={styles.sideActions}>
-                          <button
-                            type="button"
-                            style={styles.sortButton}
-                            disabled={saving || index === 0}
-                            onClick={() => handleMove("up", String(item.id))}
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            style={styles.sortButton}
-                            disabled={saving || index === filteredItems.length - 1}
-                            onClick={() => handleMove("down", String(item.id))}
-                          >
-                            ↓
-                          </button>
-                          <button
-                            type="button"
-                            style={styles.deleteMiniButton}
-                            disabled={saving}
-                            onClick={() => handleDelete(String(item.id))}
-                          >
-                            刪
-                          </button>
+                <div className="px-4 py-4 flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(expanded ? null : item.id)}
+                    className="flex-1 text-left cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="text-2xl">{item.emoji || '🎁'}</div>
+                      <div>
+                        <div className="text-base font-black text-[#2D1500]">
+                          {index + 1}. {item.name || '未命名獎項'}
+                        </div>
+                        <div className="text-xs text-[#2D1500]/55 mt-1">
+                          機率：{Number(item.probability || 0)}%
+                          {!!item.remark && `　|　備註：${item.remark.slice(0, 20)}${item.remark.length > 20 ? '...' : ''}`}
                         </div>
                       </div>
-
-                      {active && !isCreating && (
-                        <div style={styles.inlineEditorCard}>
-                          <div style={styles.inlineEditorTitle}>品項詳細設定</div>
-                          <EditorForm
-                            form={form}
-                            setForm={setForm}
-                            saving={saving}
-                            isCreating={false}
-                            onCancel={resetEditor}
-                            onSave={handleSave}
-                            onCreate={handleCreate}
-                          />
-                        </div>
-                      )}
                     </div>
-                  );
-                })}
+                  </button>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(expanded ? null : item.id)}
+                      className="px-3 py-2 rounded-full text-xs font-bold"
+                      style={{
+                        background: '#FFF8EE',
+                        color: '#C9341A',
+                        border: '1px solid #C9341A30',
+                      }}
+                    >
+                      {expanded ? '收起' : '編輯'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePrize(item.id, item.name)}
+                      className="px-3 py-2 rounded-full text-xs font-bold text-white"
+                      style={{
+                        background: 'linear-gradient(135deg, #C9341A, #8B1A0A)',
+                      }}
+                    >
+                      刪除品項
+                    </button>
+                  </div>
+                </div>
+
+                {expanded && (
+                  <div
+                    className="px-4 pb-4 pt-1 grid grid-cols-1 md:grid-cols-2 gap-4"
+                    style={{ background: '#FFFDFC' }}
+                  >
+                    <label className="block">
+                      <div className="text-sm font-bold text-[#C9341A] mb-2">獎項名稱</div>
+                      <input
+                        value={item.name || ''}
+                        onChange={(e) => handleFieldChange(item.id, 'name', e.target.value)}
+                        className="w-full rounded-xl px-4 py-3 outline-none"
+                        style={{ border: '1px solid #C9341A30' }}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <div className="text-sm font-bold text-[#C9341A] mb-2">圖示 Emoji</div>
+                      <input
+                        value={item.emoji || ''}
+                        onChange={(e) => handleFieldChange(item.id, 'emoji', e.target.value)}
+                        className="w-full rounded-xl px-4 py-3 outline-none"
+                        style={{ border: '1px solid #C9341A30' }}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <div className="text-sm font-bold text-[#C9341A] mb-2">機率 (%)</div>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={item.probability ?? 0}
+                        onChange={(e) => handleFieldChange(item.id, 'probability', e.target.value)}
+                        className="w-full rounded-xl px-4 py-3 outline-none"
+                        style={{ border: '1px solid #C9341A30' }}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <div className="text-sm font-bold text-[#C9341A] mb-2">分類</div>
+                      <input
+                        value={item.category_name || ''}
+                        onChange={(e) => handleFieldChange(item.id, 'category_name', e.target.value)}
+                        className="w-full rounded-xl px-4 py-3 outline-none"
+                        style={{ border: '1px solid #C9341A30' }}
+                      />
+                    </label>
+
+                    <label className="block md:col-span-2">
+                      <div className="text-sm font-bold text-[#C9341A] mb-2">品項名稱 / 對應商品</div>
+                      <input
+                        value={item.product_name || ''}
+                        onChange={(e) => handleFieldChange(item.id, 'product_name', e.target.value)}
+                        className="w-full rounded-xl px-4 py-3 outline-none"
+                        style={{ border: '1px solid #C9341A30' }}
+                      />
+                    </label>
+
+                    <label className="block md:col-span-2">
+                      <div className="text-sm font-bold text-[#C9341A] mb-2">備註</div>
+                      <textarea
+                        rows={4}
+                        value={item.remark || ''}
+                        onChange={(e) => handleFieldChange(item.id, 'remark', e.target.value)}
+                        className="w-full rounded-xl px-4 py-3 outline-none resize-none"
+                        style={{ border: '1px solid #C9341A30' }}
+                        placeholder="例如：限平日使用、不可折現、兌換品項依現場公告為準"
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
-
-function EditorForm({
-  form,
-  setForm,
-  saving,
-  isCreating,
-  onCancel,
-  onSave,
-  onCreate,
-}: {
-  form: typeof emptyForm;
-  setForm: React.Dispatch<React.SetStateAction<typeof emptyForm>>;
-  saving: boolean;
-  isCreating: boolean;
-  onCancel: () => void;
-  onSave: () => void;
-  onCreate: () => void;
-}) {
-  return (
-    <>
-      <div style={styles.formGrid}>
-        <Field label="活動名稱">
-          <input
-            style={styles.input}
-            value={form.category}
-            onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
-          />
-        </Field>
-
-        <Field label="品項名稱">
-          <input
-            style={styles.input}
-            value={form.productName}
-            onChange={(e) => setForm((p) => ({ ...p, productName: e.target.value }))}
-          />
-        </Field>
-
-        <Field label="emoji">
-          <input
-            style={styles.input}
-            value={form.emoji}
-            onChange={(e) => setForm((p) => ({ ...p, emoji: e.target.value }))}
-          />
-        </Field>
-
-        <Field label="機率 (%)">
-          <input
-            style={styles.input}
-            type="number"
-            step="0.1"
-            value={form.rate}
-            onChange={(e) => setForm((p) => ({ ...p, rate: e.target.value }))}
-          />
-        </Field>
-
-        <Field label="是否啟用">
-          <select
-            style={styles.input}
-            value={String(form.enabled)}
-            onChange={(e) =>
-              setForm((p) => ({
-                ...p,
-                enabled: e.target.value === "true",
-              }))
-            }
-          >
-            <option value="true">啟用</option>
-            <option value="false">停用</option>
-          </select>
-        </Field>
-      </div>
-
-      <Field label="備註">
-        <textarea
-          style={styles.textarea}
-          rows={4}
-          value={form.note}
-          onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))}
-          placeholder="例如：限內用、不得與其他優惠併用、有效期限為抽中後 1 個月..."
-        />
-      </Field>
-
-      <div style={styles.actionRow}>
-        <button
-          type="button"
-          style={styles.secondaryButton}
-          onClick={onCancel}
-          disabled={saving}
-        >
-          返回列表
-        </button>
-
-        {isCreating ? (
-          <button
-            type="button"
-            style={styles.primaryButton}
-            onClick={onCreate}
-            disabled={saving}
-          >
-            {saving ? "新增中..." : "新增品項"}
-          </button>
-        ) : (
-          <button
-            type="button"
-            style={styles.primaryButton}
-            onClick={onSave}
-            disabled={saving}
-          >
-            {saving ? "儲存中..." : "儲存設定"}
-          </button>
-        )}
-      </div>
-    </>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={styles.fieldWrap}>
-      <div style={styles.label}>{label}</div>
-      {children}
-    </div>
-  );
-}
-
-function roundRate(value: number) {
-  return Number.isInteger(value)
-    ? String(value)
-    : value.toFixed(2).replace(/\.?0+$/, "");
-}
-
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    background: "#f6f1e7",
-  },
-  topBar: {
-    width: "100%",
-    height: 10,
-    background:
-      "linear-gradient(90deg, #d46b2c 0%, #c43f1e 40%, #d7a328 100%)",
-  },
-  shell: {
-    maxWidth: 980,
-    margin: "0 auto",
-    padding: "10px 10px 24px",
-  },
-  headerCard: {
-    background: "#fff",
-    borderBottom: "1px solid #edd7cf",
-    padding: "12px 16px",
-    marginBottom: 14,
-    borderRadius: 18,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
-  },
-  headerTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "nowrap",
-  },
-  headerTitleRow: {
-    display: "flex",
-    alignItems: "center",
-    minHeight: 44,
-  },
-  headerButtonGroup: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "nowrap",
-    justifyContent: "flex-end",
-    flexShrink: 0,
-  },
-  brandTitle: {
-    margin: 0,
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#c43f1e",
-    lineHeight: 1,
-    whiteSpace: "nowrap",
-  },
-  cardWarm: {
-    background: "#f8f2ef",
-    borderRadius: 20,
-    overflow: "hidden",
-    border: "1px solid #ead5ca",
-    marginBottom: 16,
-  },
-  cardWarmHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-    padding: "14px 16px",
-    color: "#d1421f",
-    fontSize: 18,
-    fontWeight: 800,
-    borderBottom: "1px solid #ead5ca",
-  },
-  rateInfo: {
-    fontSize: 14,
-    fontWeight: 700,
-  },
-  cardWarmBody: {
-    padding: 14,
-  },
-  noticeBox: {
-    border: "1px solid #f0b67f",
-    borderRadius: 16,
-    padding: "14px 16px",
-    background: "#fffaf4",
-    color: "#9a5b2b",
-    marginBottom: 16,
-    fontSize: 14,
-    lineHeight: 1.6,
-  },
-  createBox: {
-    marginBottom: 16,
-  },
-  createToggleButton: {
-    width: "100%",
-    minHeight: 50,
-    border: "none",
-    borderRadius: 14,
-    background: "#d1421f",
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: 800,
-    cursor: "pointer",
-  },
-  card: {
-    background: "#fff",
-    borderRadius: 18,
-    padding: 16,
-    boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    margin: "0 0 14px",
-    fontSize: 20,
-    fontWeight: 800,
-   } }

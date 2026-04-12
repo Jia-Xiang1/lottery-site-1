@@ -1,275 +1,270 @@
-const SUPABASE_REST_URL =
-  "https://uhclrilrpbibgdedjlrg.supabase.co/rest/v1";
-
-const SUPABASE_FUNCTIONS_URL =
-  "https://uhclrilrpbibgdedjlrg.supabase.co/functions/v1";
-
-const SUPABASE_ANON_KEY = "sb_publishable_60gSAw07rLwRY6G7nk2QvQ_nnY35AGL";
-
 export type PrizeItem = {
   id: string;
-  name?: string;
-  category_name: string;
-  product_name: string;
+  name: string;
   emoji: string;
-  weight: number;
-  is_active: boolean;
-  sort_order: number;
-  note?: string;
-  created_at?: string;
+  probability: number;
+  category_name?: string;
+  product_name?: string;
+  remark?: string;
 };
+
+export type LotteryRecord = {
+  code: string;
+  prizeId: string;
+  prizeName: string;
+  prizeEmoji: string;
+  drawTime: string;
+};
+
+export type CurrentPrizeResponse =
+  | {
+      status: 'none';
+    }
+  | {
+      status: 'expired';
+      record: LotteryRecord;
+      expiresAt: string;
+    }
+  | {
+      status: 'active';
+      record: LotteryRecord;
+      expiresAt: string;
+      prize?: PrizeItem;
+    };
 
 export type DrawPrizeResponse =
   | {
       ok: true;
-      locked: false;
+      prize: PrizeItem;
       record: {
-        id?: string;
+        code: string;
         prize_id: string;
         prize_name: string;
         prize_emoji: string;
         draw_time: string;
-        view_expires_at: string;
       };
       expiresAt: string;
-      prize: {
-        id: string;
-        name: string;
-        category_name: string;
-        product_name: string;
-        emoji: string;
-        probability: number;
-        note?: string;
-      };
     }
   | {
       ok: false;
       locked: true;
-      message: string;
-      record?: {
-        id?: string;
-        prize_id: string;
-        prize_name: string;
-        prize_emoji: string;
-        draw_time: string;
-        view_expires_at: string;
-      };
-      expiresAt?: string;
-    };
-
-export type CurrentPrizeResponse =
-  | { status: "none" }
-  | {
-      status: "active";
-      record: {
-        id?: string;
-        prize_id: string;
-        prize_name: string;
-        prize_emoji: string;
-        draw_time: string;
-        view_expires_at: string;
-      };
       expiresAt: string;
-    }
-  | {
-      status: "expired";
-      record: {
-        id?: string;
-        prize_id: string;
-        prize_name: string;
-        prize_emoji: string;
-        draw_time: string;
-        view_expires_at: string;
-      };
-      expiredAt: string;
     };
 
-function authHeaders(extra?: Record<string, string>) {
+const STORAGE_KEY = 'lottery_prizes';
+const CURRENT_PRIZE_KEY = 'lottery_current_prize';
+
+const defaultPrizes: PrizeItem[] = [
+  {
+    id: crypto.randomUUID(),
+    name: '飲料或甜點',
+    emoji: '🍮',
+    probability: 30,
+    category_name: '甜點',
+    product_name: '',
+    remark: '可兌換指定飲料或甜點一份，實際品項依店內公告為主',
+  },
+  {
+    id: crypto.randomUUID(),
+    name: '特色小菜',
+    emoji: '🥗',
+    probability: 22,
+    category_name: '特色小菜',
+    product_name: '',
+    remark: '可兌換指定特色小菜一份',
+  },
+  {
+    id: crypto.randomUUID(),
+    name: '現金折$20元',
+    emoji: '💴',
+    probability: 16,
+    category_name: '現金卷',
+    product_name: '',
+    remark: '限下次消費使用，不得折現',
+  },
+  {
+    id: crypto.randomUUID(),
+    name: '現金折$50元',
+    emoji: '💰',
+    probability: 10,
+    category_name: '現金卷',
+    product_name: '',
+    remark: '限下次消費使用，不得折現',
+  },
+  {
+    id: crypto.randomUUID(),
+    name: '現金折$100元',
+    emoji: '🎁',
+    probability: 2.8,
+    category_name: '現金卷',
+    product_name: '',
+    remark: '限下次消費使用，不得折現',
+  },
+  {
+    id: crypto.randomUUID(),
+    name: '單點主菜',
+    emoji: '🍱',
+    probability: 10,
+    category_name: '單點主菜',
+    product_name: '',
+    remark: '可兌換指定單點主菜一份',
+  },
+  {
+    id: crypto.randomUUID(),
+    name: '豪華升級',
+    emoji: '✨',
+    probability: 9,
+    category_name: '升級類',
+    product_name: '',
+    remark: '可升級套餐內容一次，依店內規則為準',
+  },
+  {
+    id: crypto.randomUUID(),
+    name: '下一碗免費',
+    emoji: '🏆',
+    probability: 0.2,
+    category_name: '特獎類',
+    product_name: '',
+    remark: '限兌換指定餐點，詳細規則請洽店員',
+  },
+];
+
+export function getPrizeList(): PrizeItem[] {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultPrizes));
+    return defaultPrizes;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as PrizeItem[];
+    return parsed.map((item) => ({
+      ...item,
+      remark: item.remark || '',
+    }));
+  } catch {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultPrizes));
+    return defaultPrizes;
+  }
+}
+
+export function savePrizeList(prizes: PrizeItem[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(prizes));
+}
+
+export function createPrizeItem(): PrizeItem {
   return {
-    apikey: SUPABASE_ANON_KEY,
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    ...extra,
+    id: crypto.randomUUID(),
+    name: '新獎項',
+    emoji: '🎉',
+    probability: 0,
+    category_name: '',
+    product_name: '',
+    remark: '',
   };
 }
 
-function normalizePrize(row: any): PrizeItem {
-  return {
-    ...row,
-    category_name: row.category_name ?? "",
-    product_name: row.product_name ?? "",
-    emoji: row.emoji ?? "🎁",
-    weight: Number(row.weight ?? 0),
-    is_active: Boolean(row.is_active),
-    sort_order: Number(row.sort_order ?? 0),
-    note: row.note ?? "",
-  };
+export function updatePrizeItem(id: string, patch: Partial<PrizeItem>) {
+  const prizes = getPrizeList();
+  const next = prizes.map((item) => (item.id === id ? { ...item, ...patch } : item));
+  savePrizeList(next);
+  return next;
 }
 
-export async function getAllPrizes(includeInactive = true): Promise<PrizeItem[]> {
-  const query = includeInactive
-    ? "select=*&order=sort_order.asc"
-    : "select=*&is_active=eq.true&order=sort_order.asc";
-
-  const res = await fetch(`${SUPABASE_REST_URL}/prizes?${query}`, {
-    headers: authHeaders(),
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data?.message || data?.error || "讀取獎項失敗");
-  }
-
-  return (data ?? []).map(normalizePrize);
+export function deletePrizeItem(id: string) {
+  const prizes = getPrizeList();
+  const next = prizes.filter((item) => item.id !== id);
+  savePrizeList(next);
+  return next;
 }
 
-export async function addPrize(input: {
-  category_name: string;
-  product_name: string;
-  emoji: string;
-  weight: number;
-  sort_order?: number;
-  note?: string;
-}) {
-  const payload = {
-    name: `${input.category_name} ${input.product_name}`.trim(),
-    category_name: input.category_name,
-    product_name: input.product_name,
-    emoji: input.emoji || "🎁",
-    weight: Number(input.weight || 0),
-    sort_order: Number(input.sort_order ?? 0),
-    is_active: true,
-    note: input.note ?? "",
-  };
+function pickPrize(prizes: PrizeItem[]) {
+  const total = prizes.reduce((sum, item) => sum + Number(item.probability || 0), 0);
+  if (total <= 0) throw new Error('目前沒有可抽獎項，請先到後台設定機率');
 
-  const res = await fetch(`${SUPABASE_REST_URL}/prizes`, {
-    method: "POST",
-    headers: authHeaders({
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    }),
-    body: JSON.stringify(payload),
-  });
+  const rand = Math.random() * total;
+  let cursor = 0;
 
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new Error(data?.message || data?.error || "新增品項失敗");
+  for (const item of prizes) {
+    cursor += Number(item.probability || 0);
+    if (rand <= cursor) return item;
   }
 
-  return Array.isArray(data) ? data[0] : data;
-}
-
-export async function updatePrize(
-  id: string,
-  input: Partial<{
-    category_name: string;
-    product_name: string;
-    emoji: string;
-    weight: number;
-    is_active: boolean;
-    sort_order: number;
-    note: string;
-  }>
-) {
-  const payload: Record<string, unknown> = { ...input };
-
-  if (payload.weight !== undefined) payload.weight = Number(payload.weight);
-  if (payload.sort_order !== undefined) payload.sort_order = Number(payload.sort_order);
-
-  if (payload.category_name !== undefined || payload.product_name !== undefined) {
-    const currentRes = await fetch(
-      `${SUPABASE_REST_URL}/prizes?id=eq.${id}&select=category_name,product_name`,
-      {
-        headers: authHeaders(),
-      }
-    );
-
-    const currentData = await currentRes.json();
-    if (!currentRes.ok) {
-      throw new Error(currentData?.message || currentData?.error || "讀取原始資料失敗");
-    }
-
-    const current = Array.isArray(currentData) ? currentData[0] : currentData;
-
-    const finalCategory =
-      typeof payload.category_name === "string"
-        ? payload.category_name
-        : current?.category_name ?? "";
-
-    const finalProduct =
-      typeof payload.product_name === "string"
-        ? payload.product_name
-        : current?.product_name ?? "";
-
-    payload.name = `${finalCategory} ${finalProduct}`.trim();
-    payload.category_name = finalCategory;
-    payload.product_name = finalProduct;
-  }
-
-  const res = await fetch(`${SUPABASE_REST_URL}/prizes?id=eq.${id}`, {
-    method: "PATCH",
-    headers: authHeaders({
-      "Content-Type": "application/json",
-      Prefer: "return=representation",
-    }),
-    body: JSON.stringify(payload),
-  });
-
-  const data = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new Error(data?.message || data?.error || "更新失敗");
-  }
-
-  return Array.isArray(data) ? data[0] : data;
-}
-
-export async function deletePrize(id: string) {
-  const res = await fetch(`${SUPABASE_REST_URL}/prizes?id=eq.${id}`, {
-    method: "DELETE",
-    headers: authHeaders({
-      Prefer: "return=minimal",
-    }),
-  });
-
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error(data?.message || data?.error || "刪除失敗");
-  }
-
-  return true;
+  return prizes[prizes.length - 1];
 }
 
 export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
-  const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/draw-lottery`, {
-    method: "POST",
-    headers: authHeaders({
-      "Content-Type": "application/json",
-    }),
-    body: JSON.stringify({}),
-  });
+  const now = Date.now();
+  const currentRaw = localStorage.getItem(CURRENT_PRIZE_KEY);
 
-  const data = await res.json().catch(() => null);
-
-  if (!res.ok) {
-    throw new Error(data?.error || data?.message || "抽獎失敗");
+  if (currentRaw) {
+    const current = JSON.parse(currentRaw);
+    const expiresAtMs = new Date(current.expiresAt).getTime();
+    if (expiresAtMs > now) {
+      return {
+        ok: false,
+        locked: true,
+        expiresAt: current.expiresAt,
+      };
+    }
   }
 
-  return data as DrawPrizeResponse;
+  const prizes = getPrizeList();
+  const prize = pickPrize(prizes);
+  const expiresAt = new Date(now + 2 * 60 * 60 * 1000).toISOString();
+
+  const record = {
+    code: `L${Date.now()}`,
+    prize_id: prize.id,
+    prize_name: prize.name,
+    prize_emoji: prize.emoji,
+    draw_time: new Date(now).toISOString(),
+  };
+
+  localStorage.setItem(
+    CURRENT_PRIZE_KEY,
+    JSON.stringify({
+      status: 'active',
+      expiresAt,
+      record: {
+        code: record.code,
+        prizeId: record.prize_id,
+        prizeName: record.prize_name,
+        prizeEmoji: record.prize_emoji,
+        drawTime: record.draw_time,
+      },
+      prize,
+    }),
+  );
+
+  return {
+    ok: true,
+    prize,
+    record,
+    expiresAt,
+  };
 }
 
 export async function getCurrentPrize(): Promise<CurrentPrizeResponse> {
-  const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/get-current-prize`, {
-    method: "POST",
-    headers: authHeaders({
-      "Content-Type": "application/json",
-    }),
-    body: JSON.stringify({}),
-  });
+  const raw = localStorage.getItem(CURRENT_PRIZE_KEY);
+  if (!raw) return { status: 'none' };
 
-  const data = await res.json().catch(() => null);
+  const parsed = JSON.parse(raw);
+  const expiresAtMs = new Date(parsed.expiresAt).getTime();
+  const now = Date.now();
 
-  if (!res.ok) {
-    throw new Error(data?.error || data?.message || "讀取目前獎項失敗");
+  if (expiresAtMs <= now) {
+    return {
+      status: 'expired',
+      expiresAt: parsed.expiresAt,
+      record: parsed.record,
+    };
   }
 
-  return data as CurrentPrizeResponse;
+  return {
+    status: 'active',
+    expiresAt: parsed.expiresAt,
+    record: parsed.record,
+    prize: parsed.prize,
+  };
 }

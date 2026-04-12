@@ -19,6 +19,7 @@ type DisplayPrize = {
   product_name?: string;
   emoji: string;
   probability: number;
+  remark?: string;
 };
 
 const wavePatternBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='80' viewBox='0 0 200 80'%3E%3Cpath d='M0 50 Q25 20 50 50 Q75 80 100 50 Q125 20 150 50 Q175 80 200 50' fill='none' stroke='%23C9341A' stroke-width='2' opacity='0.08'/%3E%3Cpath d='M0 65 Q25 35 50 65 Q75 95 100 65 Q125 35 150 65 Q175 95 200 65' fill='none' stroke='%23C9A227' stroke-width='1.5' opacity='0.07'/%3E%3Cpath d='M0 25 Q25 5 50 25 Q75 45 100 25 Q125 5 150 25 Q175 45 200 25' fill='none' stroke='%23C9341A' stroke-width='1' opacity='0.05'/%3E%3C/svg%3E")`;
@@ -111,6 +112,7 @@ export default function Home() {
           product_name: result.prize.product_name,
           emoji: result.prize.emoji,
           probability: result.prize.probability,
+          remark: result.prize.remark || '',
         });
 
         setCurrentRecord({
@@ -123,8 +125,15 @@ export default function Home() {
 
         setCurrentPrizeInfo({
           status: 'active',
-          record: result.record,
+          record: {
+            code: result.record.code,
+            prizeId: result.record.prize_id,
+            prizeName: result.record.prize_name,
+            prizeEmoji: result.record.prize_emoji,
+            drawTime: result.record.draw_time,
+          },
           expiresAt: result.expiresAt,
+          prize: result.prize,
         });
 
         setPhase('spinning');
@@ -329,10 +338,22 @@ export default function Home() {
                 <div className="space-y-2">
                   <div className="text-xs text-[#C9341A]/75">目前可查看（2 小時內有效）</div>
                   <div className="text-lg font-bold text-[#2D1500]">
-                    {currentPrizeInfo.record.prize_emoji} {currentPrizeInfo.record.prize_name}
+                    {currentPrizeInfo.record.prizeEmoji} {currentPrizeInfo.record.prizeName}
                   </div>
+                  {!!currentPrizeInfo.prize?.remark && (
+                    <div
+                      className="rounded-xl px-3 py-3 text-xs leading-6"
+                      style={{
+                        background: '#FFF9EF',
+                        border: '1px solid #C9A22750',
+                        color: '#6B4B1F',
+                      }}
+                    >
+                      備註：{currentPrizeInfo.prize.remark}
+                    </div>
+                  )}
                   <div className="text-xs text-[#2D1500]/60">
-                    抽獎時間：{new Date(currentPrizeInfo.record.draw_time).toLocaleString()}
+                    抽獎時間：{new Date(currentPrizeInfo.record.drawTime).toLocaleString()}
                   </div>
                   <div className="text-xs text-[#2D1500]/60">
                     可查看剩餘：{formatRemainingText(currentPrizeInfo.expiresAt)}
