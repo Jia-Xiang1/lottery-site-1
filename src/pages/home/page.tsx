@@ -1,660 +1,405 @@
-import { useEffect, useMemo, useState } from "react";
-import { drawPrizeSecure, getAllPrizes, getCurrentPrize, type PrizeItem } from "../../utils/lotteryUtils";
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import LotteryDrum from './components/LotteryDrum';
+import PrizeResultCard from './components/PrizeResultCard';
+import PrizeTable from './components/PrizeTable';
+import {
+  drawPrizeSecure,
+  getCurrentPrize,
+  type CurrentPrizeResponse,
+  type LotteryRecord,
+} from '../../utils/lotteryUtils';
 
-function formatDate(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}/${m}/${d}`;
+type Phase = 'idle' | 'spinning' | 'result';
+
+type DisplayPrize = {
+  id: string;
+  name: string;
+  category_name?: string;
+  product_name?: string;
+  emoji: string;
+  probability: number;
+};
+
+const wavePatternBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='80' viewBox='0 0 200 80'%3E%3Cpath d='M0 50 Q25 20 50 50 Q75 80 100 50 Q125 20 150 50 Q175 80 200 50' fill='none' stroke='%23C9341A' stroke-width='2' opacity='0.08'/%3E%3Cpath d='M0 65 Q25 35 50 65 Q75 95 100 65 Q125 35 150 65 Q175 95 200 65' fill='none' stroke='%23C9A227' stroke-width='1.5' opacity='0.07'/%3E%3Cpath d='M0 25 Q25 5 50 25 Q75 45 100 25 Q125 5 150 25 Q175 45 200 25' fill='none' stroke='%23C9341A' stroke-width='1' opacity='0.05'/%3E%3C/svg%3E")`;
+
+function formatRemainingText(expiresAt: string) {
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) return '已過期';
+
+  const totalMinutes = Math.ceil(diff / 1000 / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) return `${minutes} 分鐘`;
+  if (minutes === 0) return `${hours} 小時`;
+  return `${hours} 小時 ${minutes} 分鐘`;
 }
 
-function getExpireDate(drawTime: string) {
-  const base = new Date(drawTime);
-  if (isNaN(base.getTime())) return "";
-  const expire = new Date(base);
-  expire.setMonth(expire.getMonth() + 1);
-  return formatDate(expire);
+function getCouponCategory(prizeName: string) {
+  if (prizeName === '甜點') return '甜點';
+  if (prizeName === '特色小菜') return '特色小菜';
+  if (prizeName === '單點主菜') return '單點主菜';
+
+  if (
+    prizeName === '現金折$20元' ||
+    prizeName === '現金折$50元' ||
+    prizeName === '現金折$100元' ||
+    prizeName === '現金折$200元'
+  ) {
+    return '現金卷';
+  }
+
+  if (prizeName === '下一碗免費') return '特獎類';
+  return '其他';
 }
 
-function getStartDate(drawTime: string) {
-  const base = new Date(drawTime);
-  if (isNaN(base.getTime())) return "";
-  return formatDate(base);
-}
+export default function Home() {
+  const navigate = useNavigate();
 
-function formatTime(value?: string) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (isNaN(d.getTime())) return value;
-  return d.toLocaleString("zh-TW", {
-    hour12: false,
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [finalPrize, setFinalPrize] = useState<DisplayPrize | null>(null);
+  const [currentRecord, setCurrentRecord] = useState<LotteryRecord | null>(null);
+  const [showTable, setShowTable] = useState(false);
+  const [currentPrizeInfo, setCurrentPrizeInfo] = useState<CurrentPrizeResponse | null>(null);
+  const [checkingCurrentPrize, setCheckingCurrentPrize] = useState(true);
 
-function roundRate(value: number) {
-  return Number.isInteger(value)
-    ? String(value)
-    : value.toFixed(2).replace(/\.?0+$/, "");
-}
+  const activeExpiresText = useMemo(() => {
+    if (!currentPrizeInfo || currentPrizeInfo.status !== 'active') return '';
+    return formatRemainingText(currentPrizeInfo.expiresAt);
+  }, [currentPrizeInfo]);
 
-export default function HomePage() {
-  const [prizes, setPrizes] = useState<PrizeItem[]>([]);
-  const [loadingPrizes, setLoadingPrizes] = useState(true);
-  const [drawing, setDrawing] = useState(false);
-  const [error, setError] = useState("");
-  const [lockMessage, setLockMessage] = useState("");
-  const [lockUntil, setLockUntil] = useState("");
-  const [displayText, setDisplayText] = useState("開始抽獎");
-  const [displayEmoji, setDisplayEmoji] = useState("🍚");
-  const [result, setResult] = useState<{
-    activityName: string;
-    prizeName: string;
-    note: string;
-    startDate: string;
-    expireDate: string;
-  } | null>(null);
-
-  const activePrizes = useMemo(
-    () => prizes.filter((p) => p.is_active),
-    [prizes]
-  );
-
-  const totalRate = useMemo(() => {
-    return activePrizes.reduce((sum, p) => sum + Number(p.weight || 0), 0);
-  }, [activePrizes]);
+  const refreshCurrentPrize = async () => {
+    try {
+      setCheckingCurrentPrize(true);
+      const data = await getCurrentPrize();
+      setCurrentPrizeInfo(data);
+    } catch (e) {
+      console.error('getCurrentPrize error =', e);
+    } finally {
+      setCheckingCurrentPrize(false);
+    }
+  };
 
   useEffect(() => {
-    void loadPrizes();
-    void loadCurrentPrize();
+    refreshCurrentPrize();
+
+    const timer = window.setInterval(() => {
+      refreshCurrentPrize();
+    }, 60000);
+
+    return () => window.clearInterval(timer);
   }, []);
 
-  async function loadPrizes() {
-    setLoadingPrizes(true);
-    try {
-      const data = await getAllPrizes(false);
-      setPrizes(data);
+  const handleDraw = async () => {
+    if (phase !== 'idle') return;
 
-      if (data.length > 0) {
-        setDisplayText(data[0].product_name || "開始抽獎");
-        setDisplayEmoji(data[0].emoji || "🍚");
+    try {
+      const result = await drawPrizeSecure();
+
+      if (!result.ok && result.locked) {
+        await refreshCurrentPrize();
+        alert(`2 小時內無法重複抽取，請於 ${formatRemainingText(result.expiresAt)} 後再試。`);
+        return;
       }
-    } catch (err) {
-      console.error(err);
-      setError("讀取機率表失敗");
-    } finally {
-      setLoadingPrizes(false);
-    }
-  }
 
-  async function loadCurrentPrize() {
-    try {
-      const data = await getCurrentPrize();
-
-      if (data.status === "active") {
-        const record = data.record;
-        const name = String(record.prize_name || "").trim();
-        const parts = name.split(" ");
-        const activityName = parts[0] || "抽獎活動";
-        const prizeName = name.replace(activityName, "").trim() || name;
-
-        setResult({
-          activityName,
-          prizeName,
-          note: "",
-          startDate: getStartDate(record.draw_time),
-          expireDate: getExpireDate(record.draw_time),
+      if (result.ok) {
+        setFinalPrize({
+          id: result.prize.id,
+          name: result.prize.name,
+          category_name: result.prize.category_name || getCouponCategory(result.prize.name),
+          product_name: result.prize.product_name,
+          emoji: result.prize.emoji,
+          probability: result.prize.probability,
         });
 
-        setDisplayText(prizeName);
-        setDisplayEmoji(record.prize_emoji || "🎁");
-        setLockMessage("此裝置 2 小時內已抽過獎");
-        setLockUntil(formatTime(data.expiresAt));
+        setCurrentRecord({
+          code: result.record.code,
+          prizeId: result.record.prize_id,
+          prizeName: result.record.prize_name,
+          prizeEmoji: result.record.prize_emoji,
+          drawTime: result.record.draw_time,
+        });
+
+        setCurrentPrizeInfo({
+          status: 'active',
+          record: result.record,
+          expiresAt: result.expiresAt,
+        });
+
+        setPhase('spinning');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error('drawPrizeSecure error =', e);
+      alert('抽獎失敗：' + (e instanceof Error ? e.message : JSON.stringify(e)));
     }
-  }
+  };
 
-  async function handleDraw() {
-    if (drawing) return;
+  const handleSpinComplete = async () => {
+    if (!finalPrize || !currentRecord) return;
+    setPhase('result');
+  };
 
-    setDrawing(true);
-    setError("");
-    setLockMessage("");
-    setResult(null);
+  const handleReset = () => {
+    setPhase('idle');
+    setFinalPrize(null);
+    setCurrentRecord(null);
+    refreshCurrentPrize();
+  };
 
-    let timer: number | undefined;
-
-    if (activePrizes.length > 0) {
-      timer = window.setInterval(() => {
-        const randomPrize = activePrizes[Math.floor(Math.random() * activePrizes.length)];
-        setDisplayText(randomPrize.product_name || "抽獎中");
-        setDisplayEmoji(randomPrize.emoji || "🎁");
-      }, 120);
-    }
-
-    try {
-      const res = await drawPrizeSecure();
-
-      window.setTimeout(() => {
-        if (timer) window.clearInterval(timer);
-
-        if (!res.ok && res.locked) {
-          setLockMessage(res.message || "2 小時內無法重複抽取");
-          setLockUntil(formatTime(res.expiresAt));
-          setDisplayText("已抽過");
-          setDisplayEmoji("⏳");
-          setDrawing(false);
-          return;
-        }
-
-        if (res.ok) {
-          const prize = res.prize;
-          const drawTime = res.record?.draw_time || new Date().toISOString();
-
-          setDisplayText(prize.product_name || prize.name || "中獎");
-          setDisplayEmoji(prize.emoji || "🎁");
-
-          setResult({
-            activityName: prize.category_name || "抽獎活動",
-            prizeName: prize.product_name || prize.name || "未命名獎項",
-            note: prize.note || "",
-            startDate: getStartDate(drawTime),
-            expireDate: getExpireDate(drawTime),
-          });
-
-          setLockMessage("此裝置 2 小時內已抽過獎");
-          setLockUntil(formatTime(res.expiresAt));
-        }
-
-        setDrawing(false);
-      }, 5000);
-    } catch (err) {
-      if (timer) window.clearInterval(timer);
-      console.error(err);
-      setError("抽獎失敗，請稍後再試");
-      setDisplayText("抽獎失敗");
-      setDisplayEmoji("⚠️");
-      setDrawing(false);
-    }
-  }
+  const canDraw = phase === 'idle' && currentPrizeInfo?.status !== 'active';
 
   return (
-    <div style={styles.page}>
-      <div style={styles.patternOverlay} />
+    <div
+      className="min-h-screen flex flex-col items-center justify-start relative overflow-x-hidden"
+      style={{
+        background: '#FFFBF0',
+        backgroundImage: wavePatternBg,
+        backgroundRepeat: 'repeat',
+        fontFamily: "'Noto Serif TC', serif",
+      }}
+    >
+      <div
+        className="w-full h-3"
+        style={{
+          background:
+            'linear-gradient(90deg, #C9341A 0%, #C9A227 30%, #C9341A 60%, #C9A227 80%, #C9341A 100%)',
+        }}
+      />
 
-      <div style={styles.container}>
-        <div style={styles.logoWrap}>
-          <div style={styles.logoCircle}>
-            <div style={styles.logoInner}>童叟無欺</div>
-          </div>
-        </div>
-
-        <div style={styles.titleGroup}>
-          <div style={styles.subTitleLine}>
-            <span style={styles.subLine} />
-            <span style={styles.subTitle}>吃飽就有獎</span>
-            <span style={styles.subLine} />
-          </div>
-
-          <h1 style={styles.mainTitle}>童叟無欺！開抽！</h1>
-          <div style={styles.desc}>光盤有獎，吃乾淨就能抽</div>
-        </div>
-
-        <div style={styles.midDivider}>
-          <span style={styles.dividerLine} />
-          <span style={styles.dividerIcon}>⊕</span>
-          <span style={styles.dividerLine} />
-        </div>
-
-        <div style={styles.wheelArea}>
-          <span style={{ ...styles.dot, top: -8, left: "50%", transform: "translateX(-50%)", background: "#d6421f" }} />
-          <span style={{ ...styles.dot, top: 42, left: 20, background: "#d6a621" }} />
-          <span style={{ ...styles.dot, top: 42, right: 20, background: "#d6a621" }} />
-          <span style={{ ...styles.dot, top: "50%", left: -10, transform: "translateY(-50%)", background: "#d6421f" }} />
-          <span style={{ ...styles.dot, top: "50%", right: -10, transform: "translateY(-50%)", background: "#d6421f" }} />
-          <span style={{ ...styles.dot, bottom: 42, left: 20, background: "#d6a621" }} />
-          <span style={{ ...styles.dot, bottom: 42, right: 20, background: "#d6a621" }} />
-          <span style={{ ...styles.dot, bottom: -8, left: "50%", transform: "translateX(-50%)", background: "#d6421f" }} />
-
-          <div style={styles.wheelOuter}>
-            <div style={styles.wheelInner}>
-              <div style={styles.wheelContent}>
-                <div style={{ ...styles.wheelEmoji, ...(drawing ? styles.wheelEmojiSpinning : {}) }}>
-                  {displayEmoji}
-                </div>
-                <div style={{ ...styles.wheelText, ...(drawing ? styles.wheelTextSpinning : {}) }}>
-                  {displayText}
-                </div>
-              </div>
-            </div>
-          </div>
+      <div
+        className="w-full flex items-center justify-between px-6 py-3 bg-white relative z-20"
+        style={{ borderBottom: '2px solid #C9341A20' }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[#C9341A]/70 text-xs tracking-widest font-medium">
+            童叟無欺丼飯
+          </span>
+          <span className="text-[#C9A227] text-xs">✦</span>
+          <span className="text-[#2D1500]/40 text-xs tracking-wide">
+            光盤有獎
+          </span>
         </div>
 
         <button
           type="button"
-          onClick={handleDraw}
-          disabled={drawing || activePrizes.length === 0}
+          onClick={() => navigate('/admin')}
+          className="flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-200 cursor-pointer whitespace-nowrap hover:opacity-80"
           style={{
-            ...styles.drawButton,
-            ...(drawing || activePrizes.length === 0 ? styles.drawButtonDisabled : {}),
+            background: '#FFF5F0',
+            border: '1.5px solid #C9341A50',
+            color: '#C9341A',
           }}
         >
-          ✦ 開始抽獎 ✦
+          <i className="ri-shield-keyhole-line text-sm" />
+          後台管理系統
+        </button>
+      </div>
+
+      <div className="w-full max-w-lg mx-auto px-6 py-8 flex flex-col items-center">
+        <div className="mb-5 relative">
+          <div
+            className="w-32 h-32 rounded-full overflow-hidden"
+            style={{
+              border: '4px solid #C9341A',
+              outline: '2px solid #C9A22760',
+              outlineOffset: '3px',
+            }}
+          >
+            <img
+              src="https://static.readdy.ai/image/e6361e290b8884fd762f739a91bc6d40/480f1e28a91ad034c6508e3a59d6853e.jpeg"
+              alt="童叟無欺"
+              className="w-full h-full object-cover object-top"
+            />
+          </div>
+          <div
+            className="absolute -top-1 -right-1 text-[#C9341A] text-xl"
+            style={{ filter: 'drop-shadow(0 1px 2px #C9341A40)' }}
+          >
+            ✿
+          </div>
+          <div className="absolute -bottom-1 -left-1 text-[#C9A227] text-base">
+            ✦
+          </div>
+        </div>
+
+        <section className="text-center mb-2">
+          <div className="flex items-center justify-center gap-2 mb-1">
+            <div
+              className="h-px w-12"
+              style={{ background: 'linear-gradient(90deg, transparent, #C9341A)' }}
+            />
+            <span className="text-xs tracking-widest text-[#C9341A] font-medium">
+              吃飽就有獎
+            </span>
+            <div
+              className="h-px w-12"
+              style={{ background: 'linear-gradient(90deg, #C9341A, transparent)' }}
+            />
+          </div>
+          <h1
+            className="text-3xl font-bold text-[#C9341A]"
+            style={{ textShadow: '1px 1px 0 #C9A22740' }}
+          >
+            童叟無欺！開抽！
+          </h1>
+          <p className="text-[#2D1500]/50 text-sm mt-1 tracking-wider">
+            光盤有獎 · 吃乾淨就能抽
+          </p>
+        </section>
+
+        <div className="flex items-center gap-3 my-4 w-full">
+          <div
+            className="flex-1 h-px"
+            style={{ background: 'linear-gradient(90deg, transparent, #C9341A30)' }}
+          />
+          <span className="text-[#C9A227] text-lg">⊕</span>
+          <div
+            className="flex-1 h-px"
+            style={{ background: 'linear-gradient(90deg, #C9341A30, transparent)' }}
+          />
+        </div>
+
+        <div className="my-6">
+          <LotteryDrum
+            isSpinning={phase === 'spinning'}
+            finalPrize={finalPrize}
+            onSpinComplete={handleSpinComplete}
+          />
+        </div>
+
+        <button
+          onClick={handleDraw}
+          disabled={!canDraw}
+          className="relative overflow-hidden rounded-full px-16 py-4 text-xl font-bold tracking-widest transition-all duration-300 cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            background:
+              canDraw
+                ? 'linear-gradient(135deg, #C9341A, #8B1A0A, #C9341A)'
+                : 'linear-gradient(135deg, #999, #666, #999)',
+            color: '#fff',
+            border: '2px solid #C9A22760',
+          }}
+        >
+          {canDraw && (
+            <span
+              className="absolute inset-0 rounded-full"
+              style={{
+                background:
+                  'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
+                animation: 'btnShimmer 2s linear infinite',
+              }}
+            />
+          )}
+          <span className="relative z-10">
+            {canDraw ? '✦ 開始抽獎 ✦' : '暫時無法抽獎'}
+          </span>
         </button>
 
-        <div style={styles.tip}>吃完光盤後，請點擊按鈕開始抽獎</div>
-
-        {!!error && <div style={styles.errorBox}>{error}</div>}
-
-        {!!lockMessage && (
-          <div style={styles.noticeBox}>
-            <div>{lockMessage}</div>
-            {!!lockUntil && <div style={{ marginTop: 6 }}>可再次抽獎時間：{lockUntil}</div>}
-          </div>
+        {checkingCurrentPrize ? (
+          <p className="text-[#2D1500]/40 text-xs mt-3 text-center tracking-wider">
+            檢查目前抽獎狀態中...
+          </p>
+        ) : currentPrizeInfo?.status === 'active' ? (
+          <p className="text-[#C9341A]/70 text-xs mt-3 text-center tracking-wider">
+            2 小時內無法重新抽取，請於 {activeExpiresText} 後再試
+          </p>
+        ) : (
+          <p className="text-[#2D1500]/40 text-xs mt-3 text-center tracking-wider">
+            吃完光盤後，請點擊按鈕開始抽獎
+          </p>
         )}
 
-        {result && (
-          <div style={styles.resultCard}>
-            <div style={styles.resultBadge}>恭喜中獎</div>
-            <div style={styles.resultActivity}>{result.activityName}</div>
-            <div style={styles.resultPrize}>{result.prizeName}</div>
-
-            {!!result.note && (
-              <div style={styles.resultNoteBox}>
-                <div style={styles.resultLabel}>備註</div>
-                <div style={styles.resultNote}>{result.note}</div>
-              </div>
-            )}
-
-            <div style={styles.resultDateBox}>
-              <div style={styles.resultLabel}>使用期限</div>
-              <div style={styles.resultDate}>
-                {result.startDate}
-                <br />～
-                <br />
-                {result.expireDate}
-              </div>
+        <div className="w-full mt-8">
+          <div
+            className="rounded-2xl overflow-hidden bg-white"
+            style={{ border: '1.5px solid #C9341A20' }}
+          >
+            <div
+              className="px-4 py-3 text-sm font-bold"
+              style={{ background: '#FFF5F0', color: '#C9341A' }}
+            >
+              查看抽中選項
             </div>
-          </div>
-        )}
 
-        <div style={styles.tableCard}>
-          <div style={styles.tableHeader}>
-            <span>中獎機率表</span>
-            <span>總機率：{roundRate(totalRate)}%</span>
-          </div>
-
-          {loadingPrizes ? (
-            <div style={styles.emptyBox}>載入中...</div>
-          ) : activePrizes.length === 0 ? (
-            <div style={styles.emptyBox}>目前沒有可抽獎項</div>
-          ) : (
-            <div style={styles.prizeList}>
-              {activePrizes.map((item) => (
-                <div key={item.id} style={styles.prizeRow}>
-                  <div style={styles.prizeRowLeft}>
-                    <div style={styles.prizeName}>
-                      {item.category_name}｜{item.product_name}
-                    </div>
-                    {!!item.note && (
-                      <div style={styles.prizeNote}>備註：{item.note}</div>
-                    )}
+            <div className="px-4 py-4 text-sm">
+              {checkingCurrentPrize ? (
+                <div className="text-[#2D1500]/50">載入中...</div>
+              ) : currentPrizeInfo?.status === 'active' ? (
+                <div className="space-y-2">
+                  <div className="text-xs text-[#C9341A]/75">目前可查看（2 小時內有效）</div>
+                  <div className="text-lg font-bold text-[#2D1500]">
+                    {currentPrizeInfo.record.prize_emoji} {currentPrizeInfo.record.prize_name}
                   </div>
-                  <div style={styles.prizeRate}>
-                    {roundRate(Number(item.weight || 0))}%
+                  <div className="text-xs text-[#2D1500]/60">
+                    抽獎時間：{new Date(currentPrizeInfo.record.draw_time).toLocaleString()}
+                  </div>
+                  <div className="text-xs text-[#2D1500]/60">
+                    可查看剩餘：{formatRemainingText(currentPrizeInfo.expiresAt)}
                   </div>
                 </div>
-              ))}
+              ) : currentPrizeInfo?.status === 'expired' ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-bold text-red-600">已過期</div>
+                  <div className="text-xs text-[#2D1500]/60">
+                    此中獎資訊已超過 2 小時查看期限
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[#2D1500]/50">目前沒有可查看的中獎選項</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full mt-8">
+          <button
+            onClick={() => setShowTable(!showTable)}
+            className="w-full flex items-center justify-center gap-2 py-2 text-xs text-[#C9341A]/60 hover:text-[#C9341A] transition-colors cursor-pointer font-medium"
+          >
+            <span>{showTable ? '收起' : '查看'}中獎機率表</span>
+            <i className={`ri-arrow-${showTable ? 'up' : 'down'}-s-line`} />
+          </button>
+          {showTable && (
+            <div className="mt-2 animate-[fadeIn_0.3s_ease]">
+              <PrizeTable />
             </div>
           )}
         </div>
-
-        <div style={styles.adminLinkWrap}>
-          <a href="#/admin" style={styles.adminLink}>
-            後台管理
-          </a>
-        </div>
       </div>
+
+      <div className="w-full mt-auto">
+        <p className="text-[#2D1500]/30 text-xs text-center pb-3">
+          童叟無欺丼飯 · 光盤有獎活動
+        </p>
+        <div
+          className="w-full h-3"
+          style={{
+            background:
+              'linear-gradient(90deg, #C9A227 0%, #C9341A 30%, #C9A227 60%, #C9341A 80%, #C9A227 100%)',
+          }}
+        />
+      </div>
+
+      {phase === 'result' && currentRecord && finalPrize && (
+        <PrizeResultCard
+          record={currentRecord}
+          prize={finalPrize}
+          onReset={handleReset}
+        />
+      )}
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700;900&display=swap');
+        @keyframes btnShimmer {
+          from { transform: translateX(-100%); }
+          to { transform: translateX(200%); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    position: "relative",
-    background: "#f8f4e8",
-    overflowX: "hidden",
-  },
-  patternOverlay: {
-    position: "absolute",
-    inset: 0,
-    backgroundImage:
-      "radial-gradient(circle at 20px 20px, rgba(216,74,40,0.03) 2px, transparent 2px), linear-gradient(rgba(223,122,94,0.10) 2px, transparent 2px)",
-    backgroundSize: "80px 80px, 100% 88px",
-    pointerEvents: "none",
-  },
-  container: {
-    position: "relative",
-    zIndex: 1,
-    maxWidth: 760,
-    margin: "0 auto",
-    padding: "28px 16px 40px",
-    textAlign: "center",
-  },
-  logoWrap: {
-    display: "flex",
-    justifyContent: "center",
-    marginBottom: 18,
-  },
-  logoCircle: {
-    width: 140,
-    height: 140,
-    borderRadius: "50%",
-    background: "linear-gradient(135deg, #d38d1e 0%, #d63e1d 100%)",
-    padding: 6,
-    boxShadow: "0 8px 20px rgba(0,0,0,0.08)",
-  },
-  logoInner: {
-    width: "100%",
-    height: "100%",
-    borderRadius: "50%",
-    background: "#f7ecd8",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#5b2d1a",
-    fontSize: 28,
-    fontWeight: 900,
-    letterSpacing: "0.08em",
-  },
-  titleGroup: {
-    marginBottom: 24,
-  },
-  subTitleLine: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    marginBottom: 10,
-  },
-  subLine: {
-    width: 90,
-    height: 2,
-    background: "#c97d61",
-    opacity: 0.65,
-  },
-  subTitle: {
-    color: "#c36d4c",
-    fontSize: 16,
-    fontWeight: 700,
-    letterSpacing: "0.18em",
-  },
-  mainTitle: {
-    margin: 0,
-    fontSize: 46,
-    lineHeight: 1.15,
-    color: "#c83a1f",
-    fontWeight: 900,
-    letterSpacing: "0.04em",
-  },
-  desc: {
-    marginTop: 12,
-    color: "#9e8b79",
-    fontSize: 18,
-    fontWeight: 500,
-  },
-  midDivider: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 16,
-    margin: "30px 0 24px",
-  },
-  dividerLine: {
-    width: 150,
-    height: 2,
-    background: "#ddc6b7",
-  },
-  dividerIcon: {
-    color: "#d1a52c",
-    fontSize: 28,
-    lineHeight: 1,
-  },
-  wheelArea: {
-    position: "relative",
-    width: 520,
-    maxWidth: "100%",
-    margin: "0 auto 26px",
-    padding: "24px 16px",
-  },
-  dot: {
-    position: "absolute",
-    width: 22,
-    height: 22,
-    borderRadius: "50%",
-  },
-  wheelOuter: {
-    width: "100%",
-    aspectRatio: "1 / 1",
-    borderRadius: "50%",
-    background: "linear-gradient(135deg, #cf8b18 0%, #d43d1f 100%)",
-    padding: 12,
-    boxShadow: "0 10px 24px rgba(162,64,26,0.14)",
-  },
-  wheelInner: {
-    width: "100%",
-    height: "100%",
-    borderRadius: "50%",
-    background: "#fff8ef",
-    border: "6px solid #f0d5c6",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  wheelContent: {
-    width: "82%",
-    height: "82%",
-    borderRadius: "50%",
-    border: "2px solid rgba(219,179,120,0.35)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
-    boxSizing: "border-box",
-  },
-  wheelEmoji: {
-    fontSize: 70,
-    lineHeight: 1,
-    marginBottom: 14,
-    transition: "transform 0.2s ease",
-  },
-  wheelEmojiSpinning: {
-    transform: "scale(1.08)",
-  },
-  wheelText: {
-    color: "#c83a1f",
-    fontSize: 34,
-    fontWeight: 900,
-    lineHeight: 1.2,
-    wordBreak: "break-word",
-    transition: "transform 0.2s ease",
-  },
-  wheelTextSpinning: {
-    transform: "scale(1.06)",
-  },
-  drawButton: {
-    width: "100%",
-    maxWidth: 460,
-    minHeight: 78,
-    borderRadius: 40,
-    border: "3px solid #d08e1d",
-    background: "linear-gradient(135deg, #d84421 0%, #a61712 100%)",
-    color: "#fff",
-    fontSize: 26,
-    fontWeight: 900,
-    letterSpacing: "0.08em",
-    cursor: "pointer",
-    boxShadow: "0 10px 20px rgba(173,46,25,0.14)",
-  },
-  drawButtonDisabled: {
-    opacity: 0.6,
-    cursor: "not-allowed",
-  },
-  tip: {
-    marginTop: 18,
-    color: "#b7a18f",
-    fontSize: 16,
-  },
-  errorBox: {
-    marginTop: 18,
-    background: "#fff1ef",
-    color: "#b42318",
-    border: "1px solid #f2c4bf",
-    borderRadius: 18,
-    padding: "14px 16px",
-  },
-  noticeBox: {
-    marginTop: 18,
-    background: "#fff7eb",
-    color: "#8c5b1c",
-    border: "1px solid #f0c98e",
-    borderRadius: 18,
-    padding: "14px 16px",
-    lineHeight: 1.7,
-  },
-  resultCard: {
-    maxWidth: 560,
-    margin: "24px auto 0",
-    background: "#fff",
-    borderRadius: 28,
-    padding: "22px 18px",
-    boxShadow: "0 10px 26px rgba(0,0,0,0.06)",
-  },
-  resultBadge: {
-    display: "inline-block",
-    padding: "8px 16px",
-    borderRadius: 999,
-    background: "#fff1e8",
-    color: "#b63317",
-    fontWeight: 900,
-    marginBottom: 10,
-  },
-  resultActivity: {
-    color: "#8b1a0a",
-    fontWeight: 800,
-    fontSize: 18,
-    marginBottom: 8,
-  },
-  resultPrize: {
-    color: "#c83a1f",
-    fontSize: 36,
-    fontWeight: 900,
-    lineHeight: 1.2,
-    marginBottom: 16,
-  },
-  resultNoteBox: {
-    background: "#faf7f2",
-    border: "1px solid #eee0d1",
-    borderRadius: 18,
-    padding: 14,
-    textAlign: "left",
-    marginBottom: 14,
-  },
-  resultDateBox: {
-    background: "#fffaf1",
-    border: "1px solid #f1ddb3",
-    borderRadius: 18,
-    padding: 14,
-  },
-  resultLabel: {
-    fontSize: 13,
-    fontWeight: 800,
-    color: "#8b1a0a",
-    marginBottom: 8,
-  },
-  resultNote: {
-    color: "#5c4f48",
-    lineHeight: 1.8,
-    whiteSpace: "pre-wrap",
-    wordBreak: "break-word",
-  },
-  resultDate: {
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#6d4b1e",
-    lineHeight: 1.8,
-  },
-  tableCard: {
-    maxWidth: 700,
-    margin: "28px auto 0",
-    background: "#fff",
-    borderRadius: 24,
-    overflow: "hidden",
-    boxShadow: "0 8px 22px rgba(0,0,0,0.05)",
-  },
-  tableHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-    padding: "16px 18px",
-    borderBottom: "1px solid #f1e3d6",
-    color: "#d1421f",
-    fontWeight: 900,
-    fontSize: 18,
-  },
-  emptyBox: {
-    padding: "26px 18px",
-    color: "#888",
-  },
-  prizeList: {
-    display: "grid",
-  },
-  prizeRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    alignItems: "flex-start",
-    padding: "16px 18px",
-    borderBottom: "1px solid #f7eee7",
-  },
-  prizeRowLeft: {
-    minWidth: 0,
-    flex: 1,
-    textAlign: "left",
-  },
-  prizeName: {
-    color: "#2f2826",
-    fontWeight: 800,
-    fontSize: 16,
-    lineHeight: 1.5,
-    wordBreak: "break-word",
-  },
-  prizeNote: {
-    marginTop: 6,
-    color: "#8a7f78",
-    fontSize: 13,
-    lineHeight: 1.6,
-    wordBreak: "break-word",
-  },
-  prizeRate: {
-    color: "#9d6a2d",
-    fontWeight: 900,
-    whiteSpace: "nowrap",
-  },
-  adminLinkWrap: {
-    marginTop: 28,
-  },
-  adminLink: {
-    color: "#b55a38",
-    textDecoration: "none",
-    fontWeight: 700,
-  },
-};

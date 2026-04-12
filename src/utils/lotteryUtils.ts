@@ -115,7 +115,9 @@ export async function getAllPrizes(includeInactive = true): Promise<PrizeItem[]>
   });
 
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.message || data?.error || "讀取獎項失敗");
+  if (!res.ok) {
+    throw new Error(data?.message || data?.error || "讀取獎項失敗");
+  }
 
   return (data ?? []).map(normalizePrize);
 }
@@ -149,7 +151,10 @@ export async function addPrize(input: {
   });
 
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(data?.message || data?.error || "新增品項失敗");
+  if (!res.ok) {
+    throw new Error(data?.message || data?.error || "新增品項失敗");
+  }
+
   return Array.isArray(data) ? data[0] : data;
 }
 
@@ -173,18 +178,23 @@ export async function updatePrize(
   if (payload.category_name !== undefined || payload.product_name !== undefined) {
     const currentRes = await fetch(
       `${SUPABASE_REST_URL}/prizes?id=eq.${id}&select=category_name,product_name`,
-      { headers: authHeaders() }
+      {
+        headers: authHeaders(),
+      }
     );
+
     const currentData = await currentRes.json();
     if (!currentRes.ok) {
       throw new Error(currentData?.message || currentData?.error || "讀取原始資料失敗");
     }
 
     const current = Array.isArray(currentData) ? currentData[0] : currentData;
+
     const finalCategory =
       typeof payload.category_name === "string"
         ? payload.category_name
         : current?.category_name ?? "";
+
     const finalProduct =
       typeof payload.product_name === "string"
         ? payload.product_name
@@ -205,7 +215,10 @@ export async function updatePrize(
   });
 
   const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(data?.message || data?.error || "更新失敗");
+  if (!res.ok) {
+    throw new Error(data?.message || data?.error || "更新失敗");
+  }
+
   return Array.isArray(data) ? data[0] : data;
 }
 
@@ -234,8 +247,12 @@ export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
     body: JSON.stringify({}),
   });
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error || data?.message || "抽獎失敗");
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    throw new Error(data?.error || data?.message || "抽獎失敗");
+  }
+
   return data as DrawPrizeResponse;
 }
 
@@ -248,7 +265,11 @@ export async function getCurrentPrize(): Promise<CurrentPrizeResponse> {
     body: JSON.stringify({}),
   });
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error || data?.message || "讀取目前獎項失敗");
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    throw new Error(data?.error || data?.message || "讀取目前獎項失敗");
+  }
+
   return data as CurrentPrizeResponse;
 }
