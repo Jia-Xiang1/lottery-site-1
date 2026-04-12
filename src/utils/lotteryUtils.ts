@@ -1,3 +1,5 @@
+import { supabase } from '../lib/supabase';
+
 export type PrizeItem = {
   id: string;
   name: string;
@@ -6,6 +8,8 @@ export type PrizeItem = {
   category_name?: string;
   product_name?: string;
   remark?: string;
+  sort_order?: number;
+  is_active?: boolean;
 };
 
 export type LotteryRecord = {
@@ -24,6 +28,7 @@ export type CurrentPrizeResponse =
       status: 'expired';
       record: LotteryRecord;
       expiresAt: string;
+      prize?: PrizeItem;
     }
   | {
       status: 'active';
@@ -51,136 +56,127 @@ export type DrawPrizeResponse =
       expiresAt: string;
     };
 
-const STORAGE_KEY = 'lottery_prizes';
 const CURRENT_PRIZE_KEY = 'lottery_current_prize';
+const ADMIN_AUTH_KEY = 'lottery_admin_authed';
 
-const defaultPrizes: PrizeItem[] = [
-  {
-    id: crypto.randomUUID(),
-    name: '飲料或甜點',
-    emoji: '🍮',
-    probability: 30,
-    category_name: '甜點',
-    product_name: '',
-    remark: '可兌換指定飲料或甜點一份，實際品項依店內公告為主',
-  },
-  {
-    id: crypto.randomUUID(),
-    name: '特色小菜',
-    emoji: '🥗',
-    probability: 22,
-    category_name: '特色小菜',
-    product_name: '',
-    remark: '可兌換指定特色小菜一份',
-  },
-  {
-    id: crypto.randomUUID(),
-    name: '現金折$20元',
-    emoji: '💴',
-    probability: 16,
-    category_name: '現金卷',
-    product_name: '',
-    remark: '限下次消費使用，不得折現',
-  },
-  {
-    id: crypto.randomUUID(),
-    name: '現金折$50元',
-    emoji: '💰',
-    probability: 10,
-    category_name: '現金卷',
-    product_name: '',
-    remark: '限下次消費使用，不得折現',
-  },
-  {
-    id: crypto.randomUUID(),
-    name: '現金折$100元',
-    emoji: '🎁',
-    probability: 2.8,
-    category_name: '現金卷',
-    product_name: '',
-    remark: '限下次消費使用，不得折現',
-  },
-  {
-    id: crypto.randomUUID(),
-    name: '單點主菜',
-    emoji: '🍱',
-    probability: 10,
-    category_name: '單點主菜',
-    product_name: '',
-    remark: '可兌換指定單點主菜一份',
-  },
-  {
-    id: crypto.randomUUID(),
-    name: '豪華升級',
-    emoji: '✨',
-    probability: 9,
-    category_name: '升級類',
-    product_name: '',
-    remark: '可升級套餐內容一次，依店內規則為準',
-  },
-  {
-    id: crypto.randomUUID(),
-    name: '下一碗免費',
-    emoji: '🏆',
-    probability: 0.2,
-    category_name: '特獎類',
-    product_name: '',
-    remark: '限兌換指定餐點，詳細規則請洽店員',
-  },
-];
-
-export function getPrizeList(): PrizeItem[] {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultPrizes));
-    return defaultPrizes;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as PrizeItem[];
-    return parsed.map((item) => ({
-      ...item,
-      remark: item.remark || '',
-    }));
-  } catch {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultPrizes));
-    return defaultPrizes;
-  }
+export function isAdminAuthed() {
+  return sessionStorage.getItem(ADMIN_AUTH_KEY) === 'true';
 }
 
-export function savePrizeList(prizes: PrizeItem[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(prizes));
+export function setAdminAuthed() {
+  sessionStorage.setItem(ADMIN_AUTH_KEY, 'true');
 }
 
-export function createPrizeItem(): PrizeItem {
+export function clearAdminAuthed() {
+  sessionStorage.removeItem(ADMIN_AUTH_KEY);
+}
+
+export async function getPrizeList(): Promise<PrizeItem[]> {
+  const { data, error } = await supabase
+    .from('lottery_prizes')
+    .select('*')
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data || []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    emoji: item.emoji || '🎁',
+    probability: Number(item.probability || 0),
+    category_name: item.category_name || '',
+    product_name: item.product_name || '',
+    remark: item.remark || '',
+    sort_order: item.sort_order || 0,
+    is_active: item.is_active,
+  }));
+}
+
+export async function createPrizeItem(): Promise<PrizeItem> {
+  const prizes = await getPrizeList();
+  const maxOrder =
+    prizes.length > 0 ? Math.max(...prizes.map((p) => p.sort_order || 0)) : 0;
+
+  const { data, error } = await supabase
+    .from('lottery_prizes')
+    .insert({
+      name: '新獎項',
+      emoji: '🎉',
+      probability: 0,
+      category_name: '',
+      product_name: '',
+      remark: '',
+      sort_order: maxOrder + 1,
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
   return {
-    id: crypto.randomUUID(),
-    name: '新獎項',
-    emoji: '🎉',
-    probability: 0,
-    category_name: '',
-    product_name: '',
-    remark: '',
+    id: data.id,
+    name: data.name,
+    emoji: data.emoji,
+    probability: Number(data.probability || 0),
+    category_name: data.category_name || '',
+    product_name: data.product_name || '',
+    remark: data.remark || '',
+    sort_order: data.sort_order || 0,
+    is_active: data.is_active,
   };
 }
 
-export function updatePrizeItem(id: string, patch: Partial<PrizeItem>) {
-  const prizes = getPrizeList();
-  const next = prizes.map((item) => (item.id === id ? { ...item, ...patch } : item));
-  savePrizeList(next);
-  return next;
+export async function updatePrizeItem(
+  id: string,
+  patch: Partial<PrizeItem>,
+): Promise<void> {
+  const payload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (patch.name !== undefined) payload.name = patch.name;
+  if (patch.emoji !== undefined) payload.emoji = patch.emoji;
+  if (patch.probability !== undefined) payload.probability = patch.probability;
+  if (patch.category_name !== undefined) payload.category_name = patch.category_name;
+  if (patch.product_name !== undefined) payload.product_name = patch.product_name;
+  if (patch.remark !== undefined) payload.remark = patch.remark;
+  if (patch.sort_order !== undefined) payload.sort_order = patch.sort_order;
+  if (patch.is_active !== undefined) payload.is_active = patch.is_active;
+
+  const { error } = await supabase
+    .from('lottery_prizes')
+    .update(payload)
+    .eq('id', id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
-export function deletePrizeItem(id: string) {
-  const prizes = getPrizeList();
-  const next = prizes.filter((item) => item.id !== id);
-  savePrizeList(next);
-  return next;
+export async function deletePrizeItem(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('lottery_prizes')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 function pickPrize(prizes: PrizeItem[]) {
   const total = prizes.reduce((sum, item) => sum + Number(item.probability || 0), 0);
-  if (total <= 0) throw new Error('目前沒有可抽獎項，請先到後台設定機率');
+
+  if (total <= 0) {
+    throw new Error('目前沒有可抽獎項，請先到後台設定機率');
+  }
 
   const rand = Math.random() * total;
   let cursor = 0;
@@ -200,6 +196,7 @@ export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
   if (currentRaw) {
     const current = JSON.parse(currentRaw);
     const expiresAtMs = new Date(current.expiresAt).getTime();
+
     if (expiresAtMs > now) {
       return {
         ok: false,
@@ -209,7 +206,7 @@ export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
     }
   }
 
-  const prizes = getPrizeList();
+  const prizes = await getPrizeList();
   const prize = pickPrize(prizes);
   const expiresAt = new Date(now + 2 * 60 * 60 * 1000).toISOString();
 
@@ -247,7 +244,10 @@ export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
 
 export async function getCurrentPrize(): Promise<CurrentPrizeResponse> {
   const raw = localStorage.getItem(CURRENT_PRIZE_KEY);
-  if (!raw) return { status: 'none' };
+
+  if (!raw) {
+    return { status: 'none' };
+  }
 
   const parsed = JSON.parse(raw);
   const expiresAtMs = new Date(parsed.expiresAt).getTime();
@@ -258,6 +258,7 @@ export async function getCurrentPrize(): Promise<CurrentPrizeResponse> {
       status: 'expired',
       expiresAt: parsed.expiresAt,
       record: parsed.record,
+      prize: parsed.prize,
     };
   }
 

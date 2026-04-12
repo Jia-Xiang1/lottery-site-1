@@ -1,19 +1,24 @@
-import type { RouteObject } from "react-router-dom";
-import Home from "../pages/home/page";
-import AdminPage from "../pages/admin/page";
-import NotFound from "../pages/NotFound";
+import type { RouteObject } from 'react-router-dom';
+import NotFound from '../pages/NotFound';
+import Home from '../pages/home/page';
+import AdminPage from '../pages/admin/page';
+import AdminLoginPage from '../pages/admin-login/page';
 
 const routes: RouteObject[] = [
   {
-    path: "/",
+    path: '/',
     element: <Home />,
   },
   {
-    path: "/admin",
+    path: '/admin-login',
+    element: <AdminLoginPage />,
+  },
+  {
+    path: '/admin',
     element: <AdminPage />,
   },
   {
-    path: "*",
+    path: '*',
     element: <NotFound />,
   },
 ];

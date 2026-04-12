@@ -3,10 +3,34 @@ import { getPrizeList, type PrizeItem } from '../../../utils/lotteryUtils';
 
 export default function PrizeTable() {
   const [prizes, setPrizes] = useState<PrizeItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setPrizes(getPrizeList());
+    const loadPrizes = async () => {
+      try {
+        setLoading(true);
+        const list = await getPrizeList();
+        setPrizes(list);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPrizes();
   }, []);
+
+  if (loading) {
+    return (
+      <div
+        className="rounded-2xl overflow-hidden bg-white px-4 py-4 text-sm text-[#2D1500]/60"
+        style={{ border: '1.5px solid #C9341A20' }}
+      >
+        載入中...
+      </div>
+    );
+  }
 
   return (
     <div
@@ -27,9 +51,7 @@ export default function PrizeTable() {
                 <td className="px-3 py-3 text-[#2D1500]">
                   {item.emoji} {item.name}
                 </td>
-                <td className="px-3 py-3 text-[#2D1500]/70">
-                  {item.probability}%
-                </td>
+                <td className="px-3 py-3 text-[#2D1500]/70">{item.probability}%</td>
               </tr>
             ))}
           </tbody>

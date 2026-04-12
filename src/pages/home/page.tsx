@@ -185,14 +185,12 @@ export default function Home() {
             童叟無欺丼飯
           </span>
           <span className="text-[#C9A227] text-xs">✦</span>
-          <span className="text-[#2D1500]/40 text-xs tracking-wide">
-            光盤有獎
-          </span>
+          <span className="text-[#2D1500]/40 text-xs tracking-wide">光盤有獎</span>
         </div>
 
         <button
           type="button"
-          onClick={() => navigate('/admin')}
+          onClick={() => navigate('/admin-login')}
           className="flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-200 cursor-pointer whitespace-nowrap hover:opacity-80"
           style={{
             background: '#FFF5F0',
@@ -227,9 +225,7 @@ export default function Home() {
           >
             ✿
           </div>
-          <div className="absolute -bottom-1 -left-1 text-[#C9A227] text-base">
-            ✦
-          </div>
+          <div className="absolute -bottom-1 -left-1 text-[#C9A227] text-base">✦</div>
         </div>
 
         <section className="text-center mb-2">
@@ -340,6 +336,7 @@ export default function Home() {
                   <div className="text-lg font-bold text-[#2D1500]">
                     {currentPrizeInfo.record.prizeEmoji} {currentPrizeInfo.record.prizeName}
                   </div>
+
                   {!!currentPrizeInfo.prize?.remark && (
                     <div
                       className="rounded-xl px-3 py-3 text-xs leading-6"
@@ -352,6 +349,7 @@ export default function Home() {
                       備註：{currentPrizeInfo.prize.remark}
                     </div>
                   )}
+
                   <div className="text-xs text-[#2D1500]/60">
                     抽獎時間：{new Date(currentPrizeInfo.record.drawTime).toLocaleString()}
                   </div>
