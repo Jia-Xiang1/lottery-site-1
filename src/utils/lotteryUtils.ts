@@ -175,7 +175,7 @@ function pickPrize(prizes: PrizeItem[]) {
   const total = prizes.reduce((sum, item) => sum + Number(item.probability || 0), 0);
 
   if (total <= 0) {
-    throw new Error('目前沒有可抽獎項，請先到後台設定機率');
+    throw new Error('目前沒有可抽獎項，請先到後台新增並設定機率');
   }
 
   const rand = Math.random() * total;

@@ -83,9 +83,9 @@ export default function AdminPage() {
 
   const handleAddPrize = async () => {
     try {
-      const newPrize = await createPrizeItem();
-      await loadPrizes();
-      setExpandedId(newPrize.id);
+      const newPrize = await createPrizeItem(); // 直接新增到 Supabase
+      await loadPrizes();                       // 重新抓最新資料
+      setExpandedId(newPrize.id);              // 展開剛新增的那一筆
     } catch (e) {
       console.error(e);
       alert('新增品項失敗');
