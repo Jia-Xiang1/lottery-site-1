@@ -41,13 +41,14 @@ Deno.serve(async (req) => {
     }
 
     const ipHash = await sha256(ip);
+    const now = new Date().toISOString();
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const { data: latestRecord, error } = await supabase
+    const { data, error } = await supabase
       .from('lottery_records')
       .select('*')
       .eq('ip_hash', ipHash)
@@ -59,27 +60,24 @@ Deno.serve(async (req) => {
       return json({ error: error.message }, 500);
     }
 
-    if (!latestRecord) {
+    if (!data) {
       return json({ status: 'none' });
     }
 
-    const now = Date.now();
-    const expiresAtMs = latestRecord.view_expires_at
-      ? new Date(latestRecord.view_expires_at).getTime()
-      : new Date(latestRecord.draw_time).getTime() + 2 * 60 * 60 * 1000;
+    const expired = new Date(data.view_expires_at).getTime() < new Date(now).getTime();
 
-    if (now <= expiresAtMs) {
+    if (expired) {
       return json({
-        status: 'active',
-        record: latestRecord,
-        expiresAt: new Date(expiresAtMs).toISOString(),
+        status: 'expired',
+        record: data,
+        expiredAt: data.view_expires_at,
       });
     }
 
     return json({
-      status: 'expired',
-      record: latestRecord,
-      expiredAt: new Date(expiresAtMs).toISOString(),
+      status: 'active',
+      record: data,
+      expiresAt: data.view_expires_at,
     });
   } catch (error) {
     return json(

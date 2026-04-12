@@ -18,9 +18,9 @@ export type PrizeItem = {
   product_name: string;
   emoji: string;
   weight: number;
+  note?: string;
   is_active: boolean;
   sort_order: number;
-  note?: string;
   created_at: string;
   updated_at: string;
 };
@@ -94,6 +94,22 @@ export type CurrentPrizeResponse =
       expiredAt: string;
     };
 
+function normalizePrize(row: any): PrizeItem {
+  return {
+    id: String(row.id),
+    name: row.name ?? `${row.category_name ?? ""} ${row.product_name ?? ""}`.trim(),
+    category_name: row.category_name ?? "",
+    product_name: row.product_name ?? "",
+    emoji: row.emoji ?? "🎁",
+    weight: Number(row.weight ?? 0),
+    note: row.note ?? "",
+    is_active: Boolean(row.is_active),
+    sort_order: Number(row.sort_order ?? 0),
+    created_at: row.created_at ?? "",
+    updated_at: row.updated_at ?? "",
+  };
+}
+
 export async function getAllPrizes(includeInactive = true): Promise<PrizeItem[]> {
   let query = supabase
     .from("prizes")
@@ -107,15 +123,7 @@ export async function getAllPrizes(includeInactive = true): Promise<PrizeItem[]>
   const { data, error } = await query;
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((row) => ({
-    ...row,
-    category_name: row.category_name ?? "",
-    product_name: row.product_name ?? "",
-    emoji: row.emoji ?? "🎁",
-    weight: Number(row.weight ?? 0),
-    sort_order: Number(row.sort_order ?? 0),
-    note: row.note ?? "",
-  }));
+  return (data ?? []).map(normalizePrize);
 }
 
 export async function addPrize(input: {
@@ -134,17 +142,17 @@ export async function addPrize(input: {
       name,
       category_name: input.category_name,
       product_name: input.product_name,
-      emoji: input.emoji,
+      emoji: input.emoji || "🎁",
       weight: Number(input.weight),
       sort_order: Number(input.sort_order ?? 0),
-      is_active: true,
       note: input.note ?? "",
+      is_active: true,
     })
     .select("*")
     .single();
 
-  if (error) throw error;
-  return data;
+  if (error) throw new Error(error.message);
+  return normalizePrize(data);
 }
 
 export async function updatePrize(
@@ -154,15 +162,20 @@ export async function updatePrize(
     product_name: string;
     emoji: string;
     weight: number;
+    note: string;
     is_active: boolean;
     sort_order: number;
-    note: string;
   }>
 ) {
   const payload: Record<string, unknown> = { ...input };
 
-  if (payload.weight !== undefined) payload.weight = Number(payload.weight);
-  if (payload.sort_order !== undefined) payload.sort_order = Number(payload.sort_order);
+  if (payload.weight !== undefined) {
+    payload.weight = Number(payload.weight);
+  }
+
+  if (payload.sort_order !== undefined) {
+    payload.sort_order = Number(payload.sort_order);
+  }
 
   const categoryName =
     typeof payload.category_name === "string" ? payload.category_name : undefined;
@@ -176,7 +189,7 @@ export async function updatePrize(
       .eq("id", id)
       .single();
 
-    if (readError) throw readError;
+    if (readError) throw new Error(readError.message);
 
     const finalCategory = categoryName ?? current.category_name ?? "";
     const finalProduct = productName ?? current.product_name ?? "";
@@ -193,13 +206,13 @@ export async function updatePrize(
     .select("*")
     .single();
 
-  if (error) throw error;
-  return data;
+  if (error) throw new Error(error.message);
+  return normalizePrize(data);
 }
 
 export async function deletePrize(id: string) {
   const { error } = await supabase.from("prizes").delete().eq("id", id);
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   return true;
 }
 
@@ -208,8 +221,13 @@ export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
     body: {},
   });
 
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("抽獎失敗，未取得結果");
+  if (error) {
+    throw new Error(error.message || "抽獎失敗");
+  }
+
+  if (!data) {
+    throw new Error("抽獎失敗，未取得結果");
+  }
 
   return data as DrawPrizeResponse;
 }
@@ -219,8 +237,13 @@ export async function getCurrentPrize(): Promise<CurrentPrizeResponse> {
     body: {},
   });
 
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("讀取獎項失敗");
+  if (error) {
+    throw new Error(error.message || "讀取抽獎狀態失敗");
+  }
+
+  if (!data) {
+    throw new Error("讀取抽獎狀態失敗");
+  }
 
   return data as CurrentPrizeResponse;
 }
