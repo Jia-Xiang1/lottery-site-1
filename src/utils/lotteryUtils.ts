@@ -20,52 +20,6 @@ export type PrizeItem = {
   is_active?: boolean;
 };
 
-export type LotteryRecord = {
-  code: string;
-  prizeId: string;
-  prizeName: string;
-  prizeEmoji: string;
-  drawTime: string;
-};
-
-export type CurrentPrizeResponse =
-  | { status: 'none' }
-  | {
-      status: 'expired';
-      record: LotteryRecord;
-      expiresAt: string;
-      prize?: PrizeItem;
-      version?: LotteryVersion;
-    }
-  | {
-      status: 'active';
-      record: LotteryRecord;
-      expiresAt: string;
-      prize?: PrizeItem;
-      version?: LotteryVersion;
-    };
-
-export type DrawPrizeResponse =
-  | {
-      ok: true;
-      prize: PrizeItem;
-      version: LotteryVersion;
-      record: {
-        code: string;
-        prize_id: string;
-        prize_name: string;
-        prize_emoji: string;
-        draw_time: string;
-      };
-      expiresAt: string;
-    }
-  | {
-      ok: false;
-      locked: true;
-      expiresAt: string;
-    };
-
-const CURRENT_PRIZE_KEY = 'lottery_current_prize';
 const ADMIN_AUTH_KEY = 'lottery_admin_authed';
 
 export function isAdminAuthed() {
@@ -79,6 +33,10 @@ export function setAdminAuthed() {
 export function clearAdminAuthed() {
   sessionStorage.removeItem(ADMIN_AUTH_KEY);
 }
+
+/* =======================
+   版本相關
+======================= */
 
 export async function getVersions(): Promise<LotteryVersion[]> {
   const { data, error } = await supabase
@@ -138,14 +96,26 @@ export async function createVersion(name: string, description = ''): Promise<Lot
   };
 }
 
-export async function setActiveVersion(versionId: string): Promise<void> {
+export async function updateVersionName(versionId: string, name: string) {
+  const { error } = await supabase
+    .from('lottery_versions')
+    .update({
+      name,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', versionId);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function setActiveVersion(versionId: string) {
   const { error: clearError } = await supabase
     .from('lottery_versions')
     .update({
       is_active: false,
       updated_at: new Date().toISOString(),
     })
-    .neq('id', '');
+    .neq('id', versionId);
 
   if (clearError) throw new Error(clearError.message);
 
@@ -160,13 +130,40 @@ export async function setActiveVersion(versionId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function getPrizeList(versionId?: string): Promise<PrizeItem[]> {
-  const targetVersionId = versionId || (await getActiveVersion()).id;
+export async function deleteVersion(versionId: string) {
+  const versions = await getVersions();
 
+  if (versions.length <= 1) {
+    throw new Error('至少需要保留一個抽獎版本');
+  }
+
+  const target = versions.find((v) => v.id === versionId);
+
+  if (!target) {
+    throw new Error('找不到要刪除的版本');
+  }
+
+  if (target.is_active) {
+    throw new Error('目前啟用中的版本不可刪除，請先切換到其他版本');
+  }
+
+  const { error } = await supabase
+    .from('lottery_versions')
+    .delete()
+    .eq('id', versionId);
+
+  if (error) throw new Error(error.message);
+}
+
+/* =======================
+   獎項相關
+======================= */
+
+export async function getPrizeList(versionId: string): Promise<PrizeItem[]> {
   const { data, error } = await supabase
     .from('lottery_prizes')
     .select('*')
-    .eq('version_id', targetVersionId)
+    .eq('version_id', versionId)
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
 
@@ -188,14 +185,15 @@ export async function getPrizeList(versionId?: string): Promise<PrizeItem[]> {
 
 export async function createPrizeItem(versionId: string): Promise<PrizeItem> {
   const prizes = await getPrizeList(versionId);
-  const maxOrder = prizes.length > 0 ? Math.max(...prizes.map((p) => p.sort_order || 0)) : 0;
+  const maxOrder =
+    prizes.length > 0 ? Math.max(...prizes.map((p) => p.sort_order || 0)) : 0;
 
   const { data, error } = await supabase
     .from('lottery_prizes')
     .insert({
       version_id: versionId,
       name: '新獎項',
-      emoji: '🎉',
+      emoji: '🎁',
       probability: 0,
       category_name: '',
       product_name: '',
@@ -213,7 +211,7 @@ export async function createPrizeItem(versionId: string): Promise<PrizeItem> {
     id: data.id,
     version_id: data.version_id,
     name: data.name,
-    emoji: data.emoji,
+    emoji: data.emoji || '🎁',
     probability: Number(data.probability || 0),
     category_name: data.category_name || '',
     product_name: data.product_name || '',
@@ -223,10 +221,7 @@ export async function createPrizeItem(versionId: string): Promise<PrizeItem> {
   };
 }
 
-export async function updatePrizeItem(
-  id: string,
-  patch: Partial<PrizeItem>,
-): Promise<void> {
+export async function updatePrizeItem(id: string, patch: Partial<PrizeItem>) {
   const payload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -248,7 +243,7 @@ export async function updatePrizeItem(
   if (error) throw new Error(error.message);
 }
 
-export async function deletePrizeItem(id: string): Promise<void> {
+export async function deletePrizeItem(id: string) {
   const { error } = await supabase
     .from('lottery_prizes')
     .delete()
@@ -256,9 +251,58 @@ export async function deletePrizeItem(id: string): Promise<void> {
 
   if (error) throw new Error(error.message);
 }
+export type LotteryRecord = {
+  code: string;
+  prizeId: string;
+  prizeName: string;
+  prizeEmoji: string;
+  drawTime: string;
+};
+
+export type CurrentPrizeResponse =
+  | { status: 'none' }
+  | {
+      status: 'expired';
+      record: LotteryRecord;
+      expiresAt: string;
+      prize?: PrizeItem;
+      version?: LotteryVersion;
+    }
+  | {
+      status: 'active';
+      record: LotteryRecord;
+      expiresAt: string;
+      prize?: PrizeItem;
+      version?: LotteryVersion;
+    };
+
+export type DrawPrizeResponse =
+  | {
+      ok: true;
+      prize: PrizeItem;
+      version: LotteryVersion;
+      record: {
+        code: string;
+        prize_id: string;
+        prize_name: string;
+        prize_emoji: string;
+        draw_time: string;
+      };
+      expiresAt: string;
+    }
+  | {
+      ok: false;
+      locked: true;
+      expiresAt: string;
+    };
+
+const CURRENT_PRIZE_KEY = 'lottery_current_prize';
 
 function pickPrize(prizes: PrizeItem[]) {
-  const total = prizes.reduce((sum, item) => sum + Number(item.probability || 0), 0);
+  const total = prizes.reduce(
+    (sum, item) => sum + Number(item.probability || 0),
+    0,
+  );
 
   if (total <= 0) {
     throw new Error('目前版本沒有可抽獎項，請先到後台設定機率');
@@ -334,7 +378,9 @@ export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
 export async function getCurrentPrize(): Promise<CurrentPrizeResponse> {
   const raw = localStorage.getItem(CURRENT_PRIZE_KEY);
 
-  if (!raw) return { status: 'none' };
+  if (!raw) {
+    return { status: 'none' };
+  }
 
   const parsed = JSON.parse(raw);
   const expiresAtMs = new Date(parsed.expiresAt).getTime();
