@@ -1,7 +1,15 @@
 import { supabase } from '../lib/supabase';
 
+export type LotteryVersion = {
+  id: string;
+  name: string;
+  description?: string;
+  is_active: boolean;
+};
+
 export type PrizeItem = {
   id: string;
+  version_id: string;
   name: string;
   emoji: string;
   probability: number;
@@ -21,26 +29,27 @@ export type LotteryRecord = {
 };
 
 export type CurrentPrizeResponse =
-  | {
-      status: 'none';
-    }
+  | { status: 'none' }
   | {
       status: 'expired';
       record: LotteryRecord;
       expiresAt: string;
       prize?: PrizeItem;
+      version?: LotteryVersion;
     }
   | {
       status: 'active';
       record: LotteryRecord;
       expiresAt: string;
       prize?: PrizeItem;
+      version?: LotteryVersion;
     };
 
 export type DrawPrizeResponse =
   | {
       ok: true;
       prize: PrizeItem;
+      version: LotteryVersion;
       record: {
         code: string;
         prize_id: string;
@@ -71,19 +80,101 @@ export function clearAdminAuthed() {
   sessionStorage.removeItem(ADMIN_AUTH_KEY);
 }
 
-export async function getPrizeList(): Promise<PrizeItem[]> {
+export async function getVersions(): Promise<LotteryVersion[]> {
+  const { data, error } = await supabase
+    .from('lottery_versions')
+    .select('*')
+    .order('created_at', { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  return (data || []).map((v) => ({
+    id: v.id,
+    name: v.name,
+    description: v.description || '',
+    is_active: !!v.is_active,
+  }));
+}
+
+export async function getActiveVersion(): Promise<LotteryVersion> {
+  const { data, error } = await supabase
+    .from('lottery_versions')
+    .select('*')
+    .eq('is_active', true)
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    throw new Error('目前沒有啟用中的抽獎版本');
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    description: data.description || '',
+    is_active: !!data.is_active,
+  };
+}
+
+export async function createVersion(name: string, description = ''): Promise<LotteryVersion> {
+  const { data, error } = await supabase
+    .from('lottery_versions')
+    .insert({
+      name,
+      description,
+      is_active: false,
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  return {
+    id: data.id,
+    name: data.name,
+    description: data.description || '',
+    is_active: !!data.is_active,
+  };
+}
+
+export async function setActiveVersion(versionId: string): Promise<void> {
+  const { error: clearError } = await supabase
+    .from('lottery_versions')
+    .update({
+      is_active: false,
+      updated_at: new Date().toISOString(),
+    })
+    .neq('id', '');
+
+  if (clearError) throw new Error(clearError.message);
+
+  const { error } = await supabase
+    .from('lottery_versions')
+    .update({
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', versionId);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function getPrizeList(versionId?: string): Promise<PrizeItem[]> {
+  const targetVersionId = versionId || (await getActiveVersion()).id;
+
   const { data, error } = await supabase
     .from('lottery_prizes')
     .select('*')
+    .eq('version_id', targetVersionId)
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 
   return (data || []).map((item) => ({
     id: item.id,
+    version_id: item.version_id,
     name: item.name,
     emoji: item.emoji || '🎁',
     probability: Number(item.probability || 0),
@@ -91,18 +182,18 @@ export async function getPrizeList(): Promise<PrizeItem[]> {
     product_name: item.product_name || '',
     remark: item.remark || '',
     sort_order: item.sort_order || 0,
-    is_active: item.is_active,
+    is_active: !!item.is_active,
   }));
 }
 
-export async function createPrizeItem(): Promise<PrizeItem> {
-  const prizes = await getPrizeList();
-  const maxOrder =
-    prizes.length > 0 ? Math.max(...prizes.map((p) => p.sort_order || 0)) : 0;
+export async function createPrizeItem(versionId: string): Promise<PrizeItem> {
+  const prizes = await getPrizeList(versionId);
+  const maxOrder = prizes.length > 0 ? Math.max(...prizes.map((p) => p.sort_order || 0)) : 0;
 
   const { data, error } = await supabase
     .from('lottery_prizes')
     .insert({
+      version_id: versionId,
       name: '新獎項',
       emoji: '🎉',
       probability: 0,
@@ -116,12 +207,11 @@ export async function createPrizeItem(): Promise<PrizeItem> {
     .select()
     .single();
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 
   return {
     id: data.id,
+    version_id: data.version_id,
     name: data.name,
     emoji: data.emoji,
     probability: Number(data.probability || 0),
@@ -129,7 +219,7 @@ export async function createPrizeItem(): Promise<PrizeItem> {
     product_name: data.product_name || '',
     remark: data.remark || '',
     sort_order: data.sort_order || 0,
-    is_active: data.is_active,
+    is_active: !!data.is_active,
   };
 }
 
@@ -155,9 +245,7 @@ export async function updatePrizeItem(
     .update(payload)
     .eq('id', id);
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 }
 
 export async function deletePrizeItem(id: string): Promise<void> {
@@ -166,16 +254,14 @@ export async function deletePrizeItem(id: string): Promise<void> {
     .delete()
     .eq('id', id);
 
-  if (error) {
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 }
 
 function pickPrize(prizes: PrizeItem[]) {
   const total = prizes.reduce((sum, item) => sum + Number(item.probability || 0), 0);
 
   if (total <= 0) {
-    throw new Error('目前沒有可抽獎項，請先到後台新增並設定機率');
+    throw new Error('目前版本沒有可抽獎項，請先到後台設定機率');
   }
 
   const rand = Math.random() * total;
@@ -206,7 +292,8 @@ export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
     }
   }
 
-  const prizes = await getPrizeList();
+  const version = await getActiveVersion();
+  const prizes = await getPrizeList(version.id);
   const prize = pickPrize(prizes);
   const expiresAt = new Date(now + 2 * 60 * 60 * 1000).toISOString();
 
@@ -231,12 +318,14 @@ export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
         drawTime: record.draw_time,
       },
       prize,
+      version,
     }),
   );
 
   return {
     ok: true,
     prize,
+    version,
     record,
     expiresAt,
   };
@@ -245,9 +334,7 @@ export async function drawPrizeSecure(): Promise<DrawPrizeResponse> {
 export async function getCurrentPrize(): Promise<CurrentPrizeResponse> {
   const raw = localStorage.getItem(CURRENT_PRIZE_KEY);
 
-  if (!raw) {
-    return { status: 'none' };
-  }
+  if (!raw) return { status: 'none' };
 
   const parsed = JSON.parse(raw);
   const expiresAtMs = new Date(parsed.expiresAt).getTime();
@@ -259,6 +346,7 @@ export async function getCurrentPrize(): Promise<CurrentPrizeResponse> {
       expiresAt: parsed.expiresAt,
       record: parsed.record,
       prize: parsed.prize,
+      version: parsed.version,
     };
   }
 
@@ -267,5 +355,6 @@ export async function getCurrentPrize(): Promise<CurrentPrizeResponse> {
     expiresAt: parsed.expiresAt,
     record: parsed.record,
     prize: parsed.prize,
+    version: parsed.version,
   };
 }

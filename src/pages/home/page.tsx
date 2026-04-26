@@ -6,6 +6,7 @@ import PrizeTable from './components/PrizeTable';
 import {
   drawPrizeSecure,
   getCurrentPrize,
+  getActiveVersion,
   type CurrentPrizeResponse,
   type LotteryRecord,
 } from '../../utils/lotteryUtils';
@@ -64,6 +65,7 @@ export default function Home() {
   const [showTable, setShowTable] = useState(false);
   const [currentPrizeInfo, setCurrentPrizeInfo] = useState<CurrentPrizeResponse | null>(null);
   const [checkingCurrentPrize, setCheckingCurrentPrize] = useState(true);
+  const [activeVersionName, setActiveVersionName] = useState('');
 
   const activeExpiresText = useMemo(() => {
     if (!currentPrizeInfo || currentPrizeInfo.status !== 'active') return '';
@@ -85,8 +87,18 @@ export default function Home() {
   useEffect(() => {
     refreshCurrentPrize();
 
+    // 👉 抓目前啟用版本
+    getActiveVersion()
+      .then((v) => setActiveVersionName(v.name))
+      .catch(() => setActiveVersionName(''));
+
     const timer = window.setInterval(() => {
       refreshCurrentPrize();
+
+      // 👉 每分鐘同步版本（避免後台切換後前台還沒更新）
+      getActiveVersion()
+        .then((v) => setActiveVersionName(v.name))
+        .catch(() => {});
     }, 60000);
 
     return () => window.clearInterval(timer);
